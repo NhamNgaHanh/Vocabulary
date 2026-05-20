@@ -5,7 +5,6 @@ import Learn from "./Learn";
 import Review from "./Review";
 
 const styles = {
-  /* Khóa cứng cả chiều rộng và chiều cao vừa khít thiết bị */
   app: {
     width: "100vw",
     height: "100dvh",
@@ -18,28 +17,29 @@ const styles = {
     padding: "0",
     display: "flex",
     flexDirection: "column",
-    overflow: "hidden", 
+    overflow: "hidden",
     boxSizing: "border-box",
   },
 
-  /* Header */
   header: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "14px 16px 8px",
+    // clamp: tối thiểu 8px, lý tưởng 1.5dvh, tối đa 14px
+    padding: "clamp(8px, 1.5dvh, 14px) 16px clamp(4px, 0.8dvh, 8px)",
     flexShrink: 0,
   },
   appName: {
     fontFamily: "'Space Grotesk', sans-serif",
-    fontSize: 24,
+    // clamp font size theo chiều cao
+    fontSize: "clamp(18px, 2.8dvh, 24px)",
     fontWeight: 700,
     color: "#fff",
     letterSpacing: -0.5,
     lineHeight: 1,
   },
   appSub: {
-    fontSize: 10,
+    fontSize: "clamp(8px, 1dvh, 10px)",
     color: "#5a5a8a",
     letterSpacing: 0.8,
     textTransform: "uppercase",
@@ -48,8 +48,8 @@ const styles = {
   streakBadge: {
     background: "linear-gradient(135deg, #ff7e4b, #e040fb)",
     borderRadius: 20,
-    padding: "4px 12px",
-    fontSize: 12,
+    padding: "clamp(3px, 0.5dvh, 4px) 12px",
+    fontSize: "clamp(10px, 1.4dvh, 12px)",
     fontWeight: 600,
     color: "#fff",
     display: "flex",
@@ -57,10 +57,9 @@ const styles = {
     gap: 5,
   },
 
-  /* Tabs */
   tabsWrapper: {
     display: "flex",
-    margin: "0 16px 12px",
+    margin: "0 16px clamp(6px, 1.2dvh, 12px)",
     background: "#141428",
     borderRadius: 14,
     padding: 4,
@@ -69,10 +68,10 @@ const styles = {
   },
   tabBtn: (active) => ({
     flex: 1,
-    padding: "10px 0",
+    padding: "clamp(7px, 1dvh, 10px) 0",
     border: "none",
     borderRadius: 10,
-    fontSize: 13,
+    fontSize: "clamp(11px, 1.4dvh, 13px)",
     fontWeight: 600,
     cursor: "pointer",
     fontFamily: "'Be Vietnam Pro', sans-serif",
@@ -82,39 +81,39 @@ const styles = {
     boxShadow: active ? "0 4px 14px rgba(76,110,245,0.35)" : "none",
   }),
 
-  /* Vùng chứa nội dung Component con ăn trọn 100% chiều rộng còn lại */
+  // KEY: flex:1 + minHeight:0 để fill phần còn lại và không overflow
   content: {
     flex: 1,
+    minHeight: 0,       // <-- quan trọng: cho phép co lại dưới nội dung min-content
     display: "flex",
     flexDirection: "column",
     width: "100%",
-    overflow: "hidden", 
+    overflow: "hidden",
   },
 
-  /* Stats bar */
   statsBar: {
     display: "flex",
     gap: 8,
-    padding: "0 16px 12px",
+    padding: "0 16px clamp(6px, 1dvh, 12px)",
     flexShrink: 0,
   },
   statCard: () => ({
     flex: 1,
     background: "#141428",
     borderRadius: 12,
-    padding: "10px 8px",
+    padding: "clamp(6px, 1dvh, 10px) 8px",
     textAlign: "center",
     border: "1px solid #1e1e38",
   }),
   statNum: (accent) => ({
     fontFamily: "'Space Grotesk', sans-serif",
-    fontSize: 18,
+    fontSize: "clamp(14px, 2dvh, 18px)",
     fontWeight: 700,
     color: accent,
     lineHeight: 1,
   }),
   statLabel: {
-    fontSize: 9,
+    fontSize: "clamp(7px, 0.9dvh, 9px)",
     color: "#44447a",
     marginTop: 4,
     textTransform: "uppercase",
@@ -127,7 +126,9 @@ const styles = {
     left: "50%",
     transform: "translateX(-50%)",
     zIndex: 9999,
-    background: type === "success" ? "linear-gradient(135deg, #059669, #10b981)" : "linear-gradient(135deg, #dc2626, #ef4444)",
+    background: type === "success"
+      ? "linear-gradient(135deg, #059669, #10b981)"
+      : "linear-gradient(135deg, #dc2626, #ef4444)",
     color: "#fff",
     padding: "12px 24px",
     borderRadius: 14,
@@ -144,6 +145,7 @@ const styles = {
     justifyContent: "center",
     gap: 16,
     flex: 1,
+    minHeight: 0,
   },
   spinner: {
     width: 36,
@@ -192,7 +194,9 @@ function App() {
         const apiKey = "AIzaSyCmL1B_6Lv3wu7OtUjVyLx3CufpckGZnW4";
         const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Sheet1?key=${apiKey}`;
         const res = await axios.get(url);
-        const formattedData = res?.data?.values?.slice(1)?.map(row => ({ Word: row[0], Meaning: row[1] })) || [];
+        const formattedData = res?.data?.values?.slice(1)?.map(row => ({
+          Word: row[0], Meaning: row[1]
+        })) || [];
         const shuffled = formattedData.sort(() => Math.random() - 0.5);
         setDataWord(shuffled);
         showToast("success", `Đã tải ${shuffled.length} từ vựng`);
@@ -207,7 +211,11 @@ function App() {
 
   return (
     <div style={styles.app}>
-      {toast.show && <div style={{ ...styles.toast(toast.type), animation: "slideDown 0.3s ease" }}>{toast.message}</div>}
+      {toast.show && (
+        <div style={{ ...styles.toast(toast.type), animation: "slideDown 0.3s ease" }}>
+          {toast.message}
+        </div>
+      )}
 
       <div style={styles.header}>
         <div>
@@ -219,20 +227,36 @@ function App() {
 
       {!loading && dataWord.length > 0 && (
         <div style={styles.statsBar}>
-          <div style={styles.statCard()}><div style={styles.statNum("#4c6ef5")}>{dataWord.length}</div><div style={styles.statLabel}>Tổng từ</div></div>
-          <div style={styles.statCard()}><div style={styles.statNum("#34d399")}>0</div><div style={styles.statLabel}>Đã thuộc</div></div>
-          <div style={styles.statCard()}><div style={styles.statNum("#fb923c")}>0</div><div style={styles.statLabel}>Ôn lại</div></div>
+          <div style={styles.statCard()}>
+            <div style={styles.statNum("#4c6ef5")}>{dataWord.length}</div>
+            <div style={styles.statLabel}>Tổng từ</div>
+          </div>
+          <div style={styles.statCard()}>
+            <div style={styles.statNum("#34d399")}>0</div>
+            <div style={styles.statLabel}>Đã thuộc</div>
+          </div>
+          <div style={styles.statCard()}>
+            <div style={styles.statNum("#fb923c")}>0</div>
+            <div style={styles.statLabel}>Ôn lại</div>
+          </div>
         </div>
       )}
 
       <div style={styles.tabsWrapper}>
-        <button style={styles.tabBtn(activeTab === "1")} onClick={() => setActiveTab("1")}>📖 Học Từ Mới</button>
-        <button style={styles.tabBtn(activeTab === "2")} onClick={() => setActiveTab("2")}>✏️ Kiểm Tra</button>
+        <button style={styles.tabBtn(activeTab === "1")} onClick={() => setActiveTab("1")}>
+          📖 Học Từ Mới
+        </button>
+        <button style={styles.tabBtn(activeTab === "2")} onClick={() => setActiveTab("2")}>
+          ✏️ Kiểm Tra
+        </button>
       </div>
 
       <div style={styles.content}>
         {loading ? (
-          <div style={styles.loadingWrap}><div style={styles.spinner} /><div style={styles.loadingText}>Đang tải từ vựng...</div></div>
+          <div style={styles.loadingWrap}>
+            <div style={styles.spinner} />
+            <div style={styles.loadingText}>Đang tải từ vựng...</div>
+          </div>
         ) : (
           <>
             {activeTab === "1" && <Learn words={dataWord} />}
@@ -243,4 +267,5 @@ function App() {
     </div>
   );
 }
+
 export default App;

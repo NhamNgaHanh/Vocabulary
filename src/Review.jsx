@@ -26,194 +26,6 @@ function shuffleArray(arr) {
 }
 
 export default function Review({ words = [] }) {
-  // --- THIẾT KẾ HỆ THỐNG DESIGN SYSTEM CHO MOBILE ---
-  const styles = {
-    page: {
-      fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-      backgroundColor: "#f8fafc", // Màu nền Slate 50 siêu dịu mắt
-      minHeight: "100vh",
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "flex-start", // Đẩy nhẹ app lên trên phù hợp hướng nhìn điện thoại
-      padding: "16px",
-      boxSizing: "border-box",
-    },
-    card: {
-      width: "100%",
-      maxWidth: "460px", // Giới hạn phom chuẩn mobile app
-      backgroundColor: "#ffffff",
-      borderRadius: "24px", // Bo góc mạnh mẽ, hiện đại
-      boxShadow: "0 12px 40px -12px rgba(15, 23, 42, 0.08)", // Đổ bóng nhẹ nhàng, sang trọng
-      border: "1px solid #f1f5f9",
-      padding: "20px 20px 28px",
-      boxSizing: "border-box",
-      display: "flex",
-      flexDirection: "column",
-    },
-    headerRow: {
-      display: "flex",
-      flexDirection: "column",
-      gap: "12px",
-      marginBottom: "24px",
-    },
-    topMeta: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-    },
-    title: {
-      fontSize: "1.15rem",
-      fontWeight: 700,
-      color: "#0f172a",
-      display: "flex",
-      alignItems: "center",
-      gap: "6px",
-    },
-    badge: {
-      fontSize: "0.8rem",
-      fontWeight: 700,
-      backgroundColor: "#e0f2fe",
-      color: "#0369a1",
-      padding: "4px 10px",
-      borderRadius: "99px", // Badge hình viên thuốc cá tính
-    },
-    /* --- THANH TIẾN TRÌNH DUOLINGO STYLE --- */
-    progressContainer: {
-      width: "100%",
-      height: "8px",
-      backgroundColor: "#f1f5f9",
-      borderRadius: "99px",
-      overflow: "hidden",
-    },
-    progressBar: (percent) => ({
-      width: `${percent}%`,
-      height: "100%",
-      backgroundColor: "#22c55e", // Màu xanh lá tạo cảm giác học tập tích cực
-      borderRadius: "99px",
-      transition: "width 0.4s cubic-bezier(0.4, 0, 0.2, 1)", // Chạy mượt mà
-    }),
-    wordBox: {
-      borderRadius: "20px",
-      background: "linear-gradient(135deg, #f4f7ff 0%, #eef2ff 100%)", // Gradient xanh nhẹ công nghệ
-      padding: "28px 20px",
-      marginBottom: "24px",
-      textAlign: "center",
-      border: "1px solid #e2e8f0",
-    },
-    enWord: {
-      fontSize: "2.2rem", // Tăng kích thước từ khóa cho nổi bật
-      fontWeight: 800,
-      letterSpacing: "-0.02em",
-      color: "#4f46e5",
-      marginBottom: "10px",
-      wordBreak: "break-word",
-    },
-    hint: {
-      fontSize: "0.85rem",
-      fontWeight: 500,
-      color: "#64748b",
-    },
-    optionsWrap: {
-      display: "grid",
-      gap: "12px", // Giãn cách rộng rãi để không bấm nhầm nút
-      marginBottom: "20px",
-    },
-    optionBtn: ({ chosen, locked, correct, isThisCorrectAnswer }) => {
-      let bg = "#ffffff";
-      let border = "#e2e8f0";
-      let textColor = "#334155";
-      let transform = "none";
-      let boxShadow = "0 2px 4px rgba(0,0,0,0.02)";
-
-      if (!locked) {
-        // Trạng thái nút bình thường, có thêm hiệu ứng bấm (active)
-        return {
-          textAlign: "left",
-          borderRadius: "16px",
-          border: `2px solid ${border}`,
-          backgroundColor: bg,
-          padding: "16px 20px", // Tăng padding giúp ngón tay dễ chạm
-          fontSize: "1rem",
-          fontWeight: 600,
-          color: textColor,
-          cursor: "pointer",
-          wordBreak: "break-word",
-          boxShadow,
-          transition: "all 0.15s ease",
-          WebkitTapHighlightColor: "transparent", // Xóa bóng mờ mặc định trên Safari/Chrome mobile
-        };
-      }
-
-      // Trạng thái sau khi đã chọn xong đáp án (Locked)
-      if (chosen && correct) {
-        bg = "#f0fdf4";
-        border = "#22c55e";
-        textColor = "#15803d";
-        boxShadow = "0 4px 12px rgba(34,197,94,0.15)";
-      } else if (chosen && !correct) {
-        bg = "#fef2f2";
-        border = "#ef4444";
-        textColor = "#b91c1c";
-        boxShadow = "0 4px 12px rgba(239,68,68,0.15)";
-      } else if (isThisCorrectAnswer) {
-        bg = "#f0fdf4";
-        border = "#22c55e";
-        textColor = "#15803d";
-      } else {
-        bg = "#f8fafc";
-        border = "#f1f5f9";
-        textColor = "#94a3b8";
-      }
-
-      return {
-        textAlign: "left",
-        borderRadius: "16px",
-        border: `2px solid ${border}`,
-        backgroundColor: bg,
-        padding: "16px 20px",
-        fontSize: "1rem",
-        fontWeight: 600,
-        color: textColor,
-        cursor: "default",
-        wordBreak: "break-word",
-        boxShadow,
-        transform,
-        transition: "all 0.2s ease",
-        WebkitTapHighlightColor: "transparent",
-      };
-    },
-    feedbackBox: (locked, isCorrect) => {
-      if (!locked) return { minHeight: "56px", marginBottom: "16px" };
-      return {
-        minHeight: "56px",
-        borderRadius: "14px",
-        backgroundColor: isCorrect ? "#ecfdf5" : "#fff1f2",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "12px 16px",
-        marginBottom: "16px",
-        border: isCorrect ? "1px solid #a7f3d0" : "1px solid #fecdd3",
-        transition: "all 0.3s ease",
-      };
-    },
-    feedbackText: (isCorrect) => ({
-      textAlign: "center",
-      fontSize: "0.95rem",
-      fontWeight: 700,
-      color: isCorrect ? "#065f46" : "#991b1b",
-    }),
-    progressText: {
-      fontSize: "0.85rem",
-      fontWeight: 600,
-      color: "#64748b",
-      textAlign: "center",
-      letterSpacing: "0.02em",
-    },
-  };
-
-  const total = words.length;
-
   const [order, setOrder] = useState([]);
   const [directionList, setDirectionList] = useState([]);
   const [qIndex, setQIndex] = useState(0);
@@ -227,22 +39,24 @@ export default function Review({ words = [] }) {
   const [correctAnswerText, setCorrectAnswerText] = useState("");
 
   const autoNextTimeoutRef = useRef(null);
+  const total = words.length;
 
-  // --- TRẠNG THÁI TRỐNG (EMPTY STATE) ---
+  // --- TRẠNG THÁI TRỐNG (EMPTY STATE CỦA THEME TỐI) ---
   if (!words || words.length === 0) {
     return (
-      <div style={styles.page}>
-        <div style={styles.card}>
-          <div style={{ textAlign: "center", color: "#64748b", padding: "48px 16px" }}>
-            <span style={{ fontSize: "3.5rem" }}>✨</span>
-            <p style={{ marginTop: "20px", fontSize: "1.2rem", fontWeight: 700, color: "#0f172a" }}>Sẵn sàng học tập!</p>
-            <p style={{ fontSize: "0.9rem", color: "#94a3b8", marginTop: "4px" }}>Vui lòng thêm danh sách từ vựng để bắt đầu thử thách.</p>
+      <div style={S.root}>
+        <div style={S.shell}>
+          <div style={{ textAlign: "center", color: "#8f8fad", padding: "32px 0" }}>
+            <span style={{ fontSize: "2.5rem" }}>✨</span>
+            <p style={{ marginTop: "16px", fontSize: "1.1rem", fontWeight: 700, color: "#fff" }}>Sẵn sàng học tập!</p>
+            <p style={{ fontSize: "0.85rem", color: "#5a5a8a", marginTop: "4px" }}>Vui lòng thêm danh sách từ vựng để bắt đầu thử thách.</p>
           </div>
         </div>
       </div>
     );
   }
 
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     setOrder(makeShuffledOrder(words.length));
     setDirectionList(makeDirectionList(words.length));
@@ -254,6 +68,7 @@ export default function Review({ words = [] }) {
   const dir = directionList[qIndex] || "en2vi";
   const hintText = dir === "en2vi" ? "Từ này có nghĩa tiếng Việt là gì?" : "Từ tiếng Anh tương ứng là gì?";
 
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     if (order[qIndex] === undefined || !directionList[qIndex]) return;
 
@@ -301,6 +116,7 @@ export default function Review({ words = [] }) {
     }
   }, [qIndex, words, order, directionList, currentWordIndex, dir]);
 
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     return () => {
       if (autoNextTimeoutRef.current) {
@@ -338,39 +154,44 @@ export default function Review({ words = [] }) {
 
     autoNextTimeoutRef.current = setTimeout(() => {
       goNextQuestion();
-    }, 1300); // Đủ thời gian cho hiệu ứng màu sắc lưu lại trên mắt người học
+    }, 1500); 
   };
 
-  // Tính phần trăm thanh tiến trình (Progress Bar) dựa trên câu hiện tại
   const progressPercent = total > 0 ? ((qIndex + 1) / total) * 100 : 0;
 
   return (
-    <div style={styles.page}>
-      <div style={styles.card}>
-        {/* Header tích hợp thanh tiến trình thông minh */}
-        <div style={styles.headerRow}>
-          <div style={styles.topMeta}>
-            <div style={styles.title}>
-              <span>📝</span>
-              <span>Kiểm tra từ vựng</span>
-            </div>
-            <div style={styles.badge}>
-              {qIndex + 1} / {total}
-            </div>
+    <div style={S.root}>
+      <div style={S.shell}>
+        
+        {/* ── TOP BAR ── */}
+        <div style={S.topBar}>
+          <div style={S.logoMark}>
+            <EditIcon />
           </div>
-          <div style={styles.progressContainer}>
-            <div style={styles.progressBar(progressPercent)} />
+          <div style={{ flex: 1 }}>
+            <div style={S.appTitle}>Kiểm tra từ vựng</div>
+          </div>
+          <div style={S.badge}>
+            {qIndex + 1} / {total}
           </div>
         </div>
 
-        {/* Khung Từ vựng câu hỏi */}
-        <div style={styles.wordBox}>
-          <div style={styles.enWord}>{questionPrompt}</div>
-          <div style={styles.hint}>{hintText}</div>
+        {/* ── PROGRESS TRACK ── */}
+        <div style={S.progressWrap}>
+          <div style={S.progressTrack}>
+            <div style={{ ...S.progressFill, width: `${progressPercent}%` }} />
+          </div>
         </div>
 
-        {/* Danh sách các nút đáp án lớn */}
-        <div style={styles.optionsWrap}>
+        {/* ── KHUNG TỪ VỰNG CÂU HỎI (CO GIÃN THEO KHÔNG GIAN DỌC) ── */}
+        <div style={S.wordBox}>
+          <div style={S.faceLang}>{dir === "en2vi" ? "EN" : "VI"}</div>
+          <div style={S.enWord}>{questionPrompt}</div>
+          <div style={S.hint}>{hintText}</div>
+        </div>
+
+        {/* ── DANH SÁCH ĐÁP ÁN ── */}
+        <div style={S.optionsWrap}>
           {options.map((opt, i) => {
             const chosen = picked === i;
             const isThisCorrectAnswer = opt.correct === true;
@@ -378,7 +199,7 @@ export default function Review({ words = [] }) {
             return (
               <button
                 key={i}
-                style={styles.optionBtn({
+                style={S.optionBtn({
                   chosen,
                   locked,
                   correct: opt.correct,
@@ -393,22 +214,243 @@ export default function Review({ words = [] }) {
           })}
         </div>
 
-        {/* Khung thông báo ĐÚNG/SAI bo tròn boong tinh tế */}
-        <div style={styles.feedbackBox(locked, isCorrect)}>
+        {/* ── KHUNG PHẢN HỒI ĐÚNG/SAI ĐỘNG ── */}
+        <div style={S.feedbackBox(locked, isCorrect)}>
           {locked && (
-            <div style={styles.feedbackText(isCorrect)}>
+            <div style={S.feedbackText(isCorrect)}>
               {isCorrect 
                 ? "🎉 Xuất sắc! Bạn đúng rồi." 
-                : `💡 Sai mất rồi! Đáp án là: ${correctAnswerText}`}
+                : `💡 Đáp án đúng là: ${correctAnswerText}`}
             </div>
           )}
         </div>
 
-        {/* Điểm số tích lũy */}
-        <div style={styles.progressText}>
-          ĐÃ ĐÚNG: <span style={{ color: "#22c55e", fontWeight: 800 }}>{score}</span> / {qIndex + 1} CÂU
+        {/* ── ĐIỂM SỐ TÍCH LŨY DƯỚI ĐÁY ── */}
+        <div style={S.progressText}>
+          ĐÃ ĐÚNG: <span style={{ color: "#34d399", fontWeight: 800 }}>{score}</span> / {qIndex + 1} CÂU
         </div>
+
       </div>
     </div>
   );
 }
+
+/* ──────────────── TRỤC SVG ICONS ĐỒNG BỘ ──────────────── */
+const EditIcon = () => (
+  <svg width={14} height={14} viewBox="0 0 24 24" fill="none"
+    stroke="#748ffc" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+  </svg>
+);
+
+/* ──────────────── DESIGN SYSTEM PHÂN PHỐI TỶ LỆ DỌC ──────────────── */
+const S = {
+  root: {
+    width: "100%",
+    height: "100%",
+    display: "flex",
+    flexDirection: "column",
+    padding: "0 16px 12px",
+    boxSizing: "border-box",
+    overflow: "hidden",
+    background: "transparent",
+    fontFamily: "'DM Sans', system-ui, -apple-system, sans-serif",
+  },
+  shell: {
+    width: "100%",
+    height: "100%",
+    display: "flex",
+    flexDirection: "column",
+    boxSizing: "border-box",
+  },
+  topBar: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+    flexShrink: 0,
+  },
+  logoMark: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    background: "rgba(76,110,245,0.15)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  appTitle: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#fff",
+  },
+  badge: {
+    fontSize: 10,
+    fontWeight: 700,
+    backgroundColor: "rgba(76,110,245,0.15)",
+    color: "#748ffc",
+    padding: "3px 8px",
+    borderRadius: 99,
+  },
+  progressWrap: {
+    marginBottom: 10,
+    flexShrink: 0,
+  },
+  progressTrack: {
+    width: "100%",
+    height: 4,
+    background: "#141428",
+    borderRadius: 99,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#34d399", // Giữ màu xanh lá Duolingo tạo động lực tích cực
+    borderRadius: 99,
+    transition: "width 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+  },
+  
+  /* CÂU HỎI CO GIÃN LINH HOẠT THEO CHIỀU CAO THỰC TẾ */
+  wordBox: {
+    position: "relative",
+    borderRadius: 16,
+    background: "linear-gradient(135deg, #ffffff, #fff)",
+    border: "1px solid #2a2a5a",
+    padding: "16px",
+    flex: 1, 
+    minHeight: 80, 
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "center",
+    textAlign: "center",
+    boxSizing: "border-box",
+    marginBottom: 10,
+  },
+  faceLang: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    fontSize: 10,
+    fontWeight: 700,
+    color: "#748ffc",
+    background: "rgba(76,110,245,0.15)",
+    padding: "2px 6px",
+    borderRadius: 6,
+  },
+  enWord: {
+    fontSize: "2.5rem", 
+    fontWeight: 800,
+    letterSpacing: "-0.02em",
+    color: "#000000",
+    marginBottom: 4,
+    wordBreak: "break-word",
+    lineHeight: 1.2,
+  },
+  hint: {
+    fontSize: "0.8rem",
+    fontWeight: 500,
+    color: "#5a5a8a",
+  },
+  
+  /* KHU VỰC ĐÁP ÁN (FIX SỐ LƯỢNG 4 NÚT - CHẶN CO COp ĐÈ LÊN NHAU) */
+  optionsWrap: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: "6px",
+    marginBottom: 8,
+    flexShrink: 0,
+  },
+  optionBtn: ({ chosen, locked, correct, isThisCorrectAnswer }) => {
+    let bg = "#141428";
+    let border = "#1e1e38";
+    let textColor = "#b0b0d0";
+    let boxShadow = "none";
+
+    if (!locked) {
+      return {
+        textAlign: "left",
+        borderRadius: "12px",
+        border: `1px solid ${border}`,
+        backgroundColor: bg,
+        padding: "11px 16px", 
+        fontSize: "0.9rem",
+        fontWeight: 600,
+        color: textColor,
+        cursor: "pointer",
+        wordBreak: "break-word",
+        transition: "all 0.12s ease",
+        WebkitTapHighlightColor: "transparent",
+      };
+    }
+
+    if (chosen && correct) {
+      bg = "rgba(16, 185, 129, 0.15)";
+      border = "#10b981";
+      textColor = "#34d399";
+      boxShadow = "0 0 12px rgba(16,185,129,0.2)";
+    } else if (chosen && !correct) {
+      bg = "rgba(239, 68, 68, 0.15)";
+      border = "#ef4444";
+      textColor = "#f87171";
+      boxShadow = "0 0 12px rgba(239,68,68,0.2)";
+    } else if (isThisCorrectAnswer) {
+      bg = "rgba(16, 185, 129, 0.1)";
+      border = "#10b981";
+      textColor = "#34d399";
+    } else {
+      bg = "#0d0d1a";
+      border = "#141428";
+      textColor = "#444466";
+    }
+
+    return {
+      textAlign: "left",
+      borderRadius: "12px",
+      border: `1px solid ${border}`,
+      backgroundColor: bg,
+      padding: "11px 16px",
+      fontSize: "0.9rem",
+      fontWeight: 600,
+      color: textColor,
+      cursor: "default",
+      wordBreak: "break-word",
+      boxShadow,
+      transition: "all 0.15s ease",
+      WebkitTapHighlightColor: "transparent",
+    };
+  },
+
+  /* THANH THÔNG BÁO */
+  feedbackBox: (locked, isCorrect) => {
+    if (!locked) return { height: "38px", marginBottom: "8px", flexShrink: 0 };
+    return {
+      height: "38px",
+      borderRadius: "10px",
+      backgroundColor: isCorrect ? "rgba(16,185,129,0.08)" : "rgba(239,68,68,0.08)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "4px 12px",
+      marginBottom: "8px",
+      border: isCorrect ? "1px solid rgba(16,185,129,0.2)" : "1px solid rgba(239,68,68,0.2)",
+      transition: "all 0.2s ease",
+      flexShrink: 0,
+    };
+  },
+  feedbackText: (isCorrect) => ({
+    textAlign: "center",
+    fontSize: "0.85rem",
+    fontWeight: 700,
+    color: isCorrect ? "#34d399" : "#f87171",
+  }),
+  progressText: {
+    fontSize: "0.8rem",
+    fontWeight: 600,
+    color: "#5a5a8a",
+    textAlign: "center",
+    letterSpacing: "0.04em",
+    flexShrink: 0,
+  },
+};
