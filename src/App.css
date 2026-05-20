@@ -1,0 +1,44 @@
+/* ─── Reset & Base ─── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: #0d0d1a;
+  color: #fff;
+  overscroll-behavior-y: none;
+}
+
+/* ─── Smooth scrolling & momentum on iOS ─── */
+.scroll-area {
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
+}
+
+/* ─── Remove default button styles ─── */
+button {
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+  user-select: none;
+}
+
+button:active {
+  transform: scale(0.97);
+  transition: transform 0.1s ease;
+}
+
+/* ─── Safe area for notch/home indicator (iPhone) ─── */
+#root {
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
