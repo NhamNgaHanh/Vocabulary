@@ -181,7 +181,8 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState({ show: false, type: "", message: "" });
   const [streak] = useState(7);
-
+  const [rememberedWords, setRememberedWords] = useState([]);
+  const [nonRemembered, setNonRemembered] = useState([]);
   const showToast = (type, message) => {
     setToast({ show: true, type, message });
     setTimeout(() => setToast(t => ({ ...t, show: false })), 3000);
@@ -195,8 +196,12 @@ function App() {
         const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Sheet1?key=${apiKey}`;
         const res = await axios.get(url);
         const formattedData = res?.data?.values?.slice(1)?.map(row => ({
-          Word: row[0], Meaning: row[1]
+          Word: row[0], Meaning: row[1], Status: row[2]
         })) || [];
+        const rememberedWords = formattedData.filter(w => w.Status === "1");
+        setRememberedWords(rememberedWords);
+        const nonRemembered = formattedData.filter(w => w.Status !== "1");
+        setNonRemembered(nonRemembered);
         const shuffled = formattedData.sort(() => Math.random() - 0.5);
         setDataWord(shuffled);
         showToast("success", `Đã tải ${shuffled.length} từ vựng`);
@@ -232,12 +237,12 @@ function App() {
             <div style={styles.statLabel}>Tổng từ</div>
           </div>
           <div style={styles.statCard()}>
-            <div style={styles.statNum("#34d399")}>0</div>
+            <div style={styles.statNum("#34d399")}>{rememberedWords.length}</div>
             <div style={styles.statLabel}>Đã thuộc</div>
           </div>
           <div style={styles.statCard()}>
-            <div style={styles.statNum("#fb923c")}>0</div>
-            <div style={styles.statLabel}>Ôn lại</div>
+            <div style={styles.statNum("#fb923c")}>{nonRemembered.length}</div>
+            <div style={styles.statLabel}>Chưa thuộc</div>
           </div>
         </div>
       )}
@@ -260,7 +265,7 @@ function App() {
         ) : (
           <>
             {activeTab === "1" && <Learn words={dataWord} />}
-            {activeTab === "2" && <Review words={dataWord} />}
+            {activeTab === "2" && <Review words={nonRemembered} />}
           </>
         )}
       </div>

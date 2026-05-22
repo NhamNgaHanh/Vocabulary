@@ -37,6 +37,7 @@ export default function Review({ words = [] }) {
   const [isCorrect, setIsCorrect] = useState(null);
   const [score, setScore] = useState(0);
   const [correctAnswerText, setCorrectAnswerText] = useState("");
+  const [sendWord, setSendWord] = useState("");
 
   const autoNextTimeoutRef = useRef(null);
   const total = words.length;
@@ -83,12 +84,14 @@ export default function Review({ words = [] }) {
       wrongPoolRaw = words
         .map((w, i) => ({ txt: w.Meaning, i }))
         .filter((w) => w.i !== currentWordIndex);
+      setSendWord(promptText);
     } else {
       promptText = correctWord.Meaning;
       correctAnswer = correctWord.Word;
       wrongPoolRaw = words
         .map((w, i) => ({ txt: w.Word, i }))
         .filter((w) => w.i !== currentWordIndex);
+      setSendWord(promptText);
     }
 
     const wrongPool = shuffleArray(wrongPoolRaw)
@@ -140,10 +143,14 @@ export default function Review({ words = [] }) {
 
   const chooseAnswer = (choiceIdx) => {
     if (locked) return;
-
     const choice = options[choiceIdx];
+    console.log(sendWord);
     const correctNow = !!choice.correct;
-
+    if (correctNow === true) {
+      submitData(sendWord, 1);
+    } else {
+      submitData(sendWord, 0);
+    }
     setPicked(choiceIdx);
     setLocked(true);
     setIsCorrect(correctNow);
@@ -156,6 +163,30 @@ export default function Review({ words = [] }) {
       goNextQuestion();
     }, 1500); 
   };
+  const submitData = async (Words, status) => {
+    try {
+      const response = await fetch(
+        "https://script.google.com/macros/s/AKfycby53wtAvYWY7GXSGvG_rL_5fz7y9GuNYlMQx0yNxFu-i_0Ny2e4RUDrPpF3j0OntV2D/exec",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "text/plain", 
+          },
+          body: JSON.stringify({
+            Words: Words,   // Ví dụ: "Book"
+            Status: status  // Ví dụ: 1 hoặc 0
+          }),
+        }
+      );
+      const data = await response.json();
+      console.log("Thành công:", data);
+    } catch (error) {
+      console.error("Lỗi khi gửi dữ liệu:", error);
+    }
+  };
+
+// Ví dụ cách bạn gọi hàm:
+// submitData("Book", 1); // Sẽ tìm chữ Book ở dòng 2 và điền số 1 vào cột D
 
   const progressPercent = total > 0 ? ((qIndex + 1) / total) * 100 : 0;
 
@@ -219,7 +250,7 @@ export default function Review({ words = [] }) {
           {locked && (
             <div style={S.feedbackText(isCorrect)}>
               {isCorrect 
-                ? "🎉 Xuất sắc! Bạn đúng rồi." 
+                ? "🎉 Xuất sắc! Bạn đúng rồi."
                 : `💡 Đáp án đúng là: ${correctAnswerText}`}
             </div>
           )}
