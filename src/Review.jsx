@@ -38,7 +38,6 @@ export default function Review({ words = [] }) {
   const [score, setScore] = useState(0);
   const [correctAnswerText, setCorrectAnswerText] = useState("");
   const [sendWord, setSendWord] = useState("");
-
   const autoNextTimeoutRef = useRef(null);
   const total = words.length;
 
@@ -144,7 +143,6 @@ export default function Review({ words = [] }) {
   const chooseAnswer = (choiceIdx) => {
     if (locked) return;
     const choice = options[choiceIdx];
-    console.log(sendWord);
     const correctNow = !!choice.correct;
     if (correctNow === true) {
       submitData(sendWord, 1);
@@ -154,11 +152,9 @@ export default function Review({ words = [] }) {
     setPicked(choiceIdx);
     setLocked(true);
     setIsCorrect(correctNow);
-
     if (correctNow) {
       setScore((s) => s + 1);
     }
-
     autoNextTimeoutRef.current = setTimeout(() => {
       goNextQuestion();
     }, 1500); 
@@ -166,20 +162,20 @@ export default function Review({ words = [] }) {
   const submitData = async (Words, status) => {
     try {
       const response = await fetch(
-        "https://script.google.com/macros/s/AKfycby53wtAvYWY7GXSGvG_rL_5fz7y9GuNYlMQx0yNxFu-i_0Ny2e4RUDrPpF3j0OntV2D/exec",
+        "https://script.google.com/macros/s/AKfycbzBCRTzrGnN8-oGB1iF9a78F3r1AsPloNPGd_qipcx2qYkZQzB6j9batyMyAfTEpYEf/exec",
         {
           method: "POST",
           headers: {
             "Content-Type": "text/plain", 
           },
           body: JSON.stringify({
-            Words: Words,   // Ví dụ: "Book"
-            Status: status  // Ví dụ: 1 hoặc 0
+            action: "updateStatus",
+            Words: Words,
+            Status: status 
           }),
         }
       );
-      const data = await response.json();
-      console.log("Thành công:", data);
+      await response.json();
     } catch (error) {
       console.error("Lỗi khi gửi dữ liệu:", error);
     }

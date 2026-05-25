@@ -3,6 +3,8 @@ import axios from "axios";
 import './App.css';
 import Learn from "./Learn";
 import Review from "./Review";
+import dayjs from "dayjs";
+import { hover } from 'framer-motion';
 
 const styles = {
   app: {
@@ -195,7 +197,12 @@ function App() {
         const apiKey = "AIzaSyCmL1B_6Lv3wu7OtUjVyLx3CufpckGZnW4";
         const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Sheet1?key=${apiKey}`;
         const res = await axios.get(url);
-        const formattedData = res?.data?.values?.slice(1)?.map(row => ({
+        const today = dayjs();
+        const startday = res?.data?.values?.[0]?.[3]
+          ? dayjs(res.data.values[0][3], "DD/MM/YYYY")
+          : dayjs();
+        const diffDays = today.diff(startday, "day");
+        const formattedData = res?.data?.values?.slice(1+ diffDays * 20, 1 + (diffDays + 1) * 20)?.map(row => ({
           Word: row[0], Meaning: row[1], Status: row[2]
         })) || [];
         const rememberedWords = formattedData.filter(w => w.Status === "1");
@@ -212,9 +219,39 @@ function App() {
       }
     };
     fetchData();
-  }, []);
-
+  }, [loading]);
+  
+  {/* Hàm reset trạng thái từ vựng về chưa thuộc (Status: "") */}
+  const handClickReset = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(
+        "https://script.google.com/macros/s/AKfycbzBCRTzrGnN8-oGB1iF9a78F3r1AsPloNPGd_qipcx2qYkZQzB6j9batyMyAfTEpYEf/exec",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "text/plain", 
+          },
+          body: JSON.stringify({
+            action: "resetstatus",
+          }),
+        }
+      );
+      await response.json();
+    } catch (error) {
+      console.error("Lỗi khi gửi dữ liệu:", error);
+    } finally {
+      setLoading(false);
+      showToast("success", "Đã reset trạng thái từ vựng");
+    }
+  };
   return (
+    loading ? (
+      <div style={styles.loadingWrap}>
+        <div style={styles.spinner} />
+        <div style={styles.loadingText}>Đang tải từ vựng...</div>
+      </div>
+    ) : (
     <div style={styles.app}>
       {toast.show && (
         <div style={{ ...styles.toast(toast.type), animation: "slideDown 0.3s ease" }}>
@@ -232,7 +269,7 @@ function App() {
 
       {!loading && dataWord.length > 0 && (
         <div style={styles.statsBar}>
-          <div style={styles.statCard()}>
+          <div style={styles.statCard()} onClick={() => handClickReset()} >
             <div style={styles.statNum("#4c6ef5")}>{dataWord.length}</div>
             <div style={styles.statLabel}>Tổng từ</div>
           </div>
@@ -248,10 +285,10 @@ function App() {
       )}
 
       <div style={styles.tabsWrapper}>
-        <button style={styles.tabBtn(activeTab === "1")} onClick={() => setActiveTab("1")}>
+        <button style={styles.tabBtn(activeTab === "1")} onClick={() => {setActiveTab("1"); setLoading(true)}}>
           📖 Học Từ Mới
         </button>
-        <button style={styles.tabBtn(activeTab === "2")} onClick={() => setActiveTab("2")}>
+        <button style={styles.tabBtn(activeTab === "2")} onClick={() => {setActiveTab("2"); setLoading(true)}}>
           ✏️ Kiểm Tra
         </button>
       </div>
@@ -270,6 +307,7 @@ function App() {
         )}
       </div>
     </div>
+    )
   );
 }
 
