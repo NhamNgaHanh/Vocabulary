@@ -314,7 +314,12 @@ export default function Learn({ words = [] }) {
                   goPrev();
                 } 
                 // Tap nhẹ -> Lật mặt thẻ
-                else if (Math.abs(x) < 15) {
+                // else {
+                //   setIsFlipped((f) => !f);
+                // }
+              }}
+              onTap={() =>{
+                if (!isPlaying) {
                   setIsFlipped((f) => !f);
                 }
               }}
