@@ -300,6 +300,7 @@ export default function Learn({ words = [] }) {
                 touchAction: "pan-y"
               }}
               whileTap={isPlaying ? {} : { cursor: "grabbing" }}
+
               onDragEnd={(_, info) => {
                 if (isPlaying) return;
                 const x = info.offset.x;
@@ -312,16 +313,13 @@ export default function Learn({ words = [] }) {
                 // Swipe RIGHT -> Kéo qua phải tức là xem từ trước đó
                 else if (x > 100 || velocity > 400) {
                   goPrev();
-                } 
-                // Tap nhẹ -> Lật mặt thẻ
-                // else {
-                //   setIsFlipped((f) => !f);
-                // }
-              }}
-              onTap={() =>{
-                if (!isPlaying) {
+                } else if (Math.abs(x) < 20) {
                   setIsFlipped((f) => !f);
-                }
+                } 
+              }}
+              onClick={() => {
+                if (isPlaying) return;
+                setIsFlipped((f) => !f);
               }}
             >
               {/* 3-D flip inner */}
