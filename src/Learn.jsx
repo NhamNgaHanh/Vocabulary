@@ -112,9 +112,9 @@ export default function Learn({ words = [] }) {
 
   /* fit-text cho mặt trước và sau */
   const { containerRef: frontRef, textRef: frontTextRef, fontSize: frontSize } =
-    useFitText({ maxFontSize: 38, minFontSize: 16, deps: [index, visibleWords.length] });
+    useFitText({ maxFontSize: "3rem", minFontSize: 16, deps: [index, visibleWords.length] });
   const { containerRef: backRef, textRef: backTextRef, fontSize: backSize } =
-    useFitText({ maxFontSize: 38, minFontSize: 16, deps: [index, visibleWords.length] });
+    useFitText({ maxFontSize: "3rem", minFontSize: 16, deps: [index, visibleWords.length] });
 
   const progressPct = visibleWords.length > 0
     ? ((index + 1) / visibleWords.length) * 100 : 0;
@@ -123,13 +123,31 @@ export default function Learn({ words = [] }) {
     ? (phase === "vi" || phase === "fade")
     : isFlipped;
 
-  /* ── TTS ── */
-  const speak = (text, lang = "en-US") => {
-    if (!window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = lang; u.rate = 0.8;
-    window.speechSynthesis.speak(u);
+  /* ── TTS (Fixed stuck engine) ── */
+  const speak = (text, lang = "en-US", clearQueue = true) => {
+    return new Promise((resolve) => {
+      if (!window.speechSynthesis || !text) {
+        resolve();
+        return;
+      }      
+      if (clearQueue) {
+        window.speechSynthesis.cancel();
+      }      
+      
+      setTimeout(() => {
+        try {
+          window.speechSynthesis.resume(); 
+          const u = new SpeechSynthesisUtterance(text.trim());
+          u.lang = lang; 
+          u.rate = 0.9;
+          u.onend = () => resolve();
+          u.onerror = () => resolve();
+          window.speechSynthesis.speak(u);
+        } catch (e) {
+          resolve();
+        }
+      }, 60);
+    });
   };
 
   /* ── Timers ── */
@@ -148,12 +166,12 @@ export default function Learn({ words = [] }) {
     const viDur = Math.min(estDur(w.Meaning), 2800);
 
     setPhase("en");
-    speak(w.Word, "en-US");
+    speak(w.Word, "en-US", true);
 
     const t1 = setTimeout(() => {
       if (!isPlayingRef.current || isPausedRef.current) return;
       setPhase("vi");
-      speak(w.Meaning, "vi-VN");
+      speak(w.Meaning, "vi-VN", true);
     }, enDur);
 
     const t2 = setTimeout(() => {
@@ -216,7 +234,7 @@ export default function Learn({ words = [] }) {
     setIndex(newIndex);
     setIsFlipped(false);
 
-    speak(visibleWords[newIndex]?.Word, "en-US");
+    speak(visibleWords[newIndex]?.Word, "en-US", true);
   };
 
   const goNext = () => changeWord(1);
@@ -251,8 +269,6 @@ export default function Learn({ words = [] }) {
           <StatusPill isPlaying={isPlaying} isPaused={isPaused} />
         </div>
 
-        {/* RANGE SLIDERS */}
-
         {/* PROGRESS */}
         <div style={S.progressRow}>
           <div style={S.progressTrack}>
@@ -274,6 +290,7 @@ export default function Learn({ words = [] }) {
               drag={isPlaying ? false : "x"}
               dragConstraints={{ left: 0, right: 0 }}
               dragElastic={0.2}
+              dragDirectionLock
               style={{
                 position: "absolute",
                 inset: 0,
@@ -289,26 +306,21 @@ export default function Learn({ words = [] }) {
                 const x = info.offset.x;
                 const velocity = info.velocity.x;
 
-                // Swipe LEFT -> Kéo qua trái tức là xem từ tiếp theo
                 if (x < -100 || velocity < -400) {
                   goNext();
                 } 
-                // Swipe RIGHT -> Kéo qua phải tức là xem từ trước đó
                 else if (x > 100 || velocity > 400) {
                   goPrev();
                 }
-                // } else if (Math.abs(x) < 20) {
-                //   setIsFlipped((f) => !f);
-                // } 
               }}
               onClick={() => {
                 if (isPlaying) return;
                 const nextFlipped = !isFlipped;
                 setIsFlipped(nextFlipped);
                 if (nextFlipped) {
-                  speak(currentWord.Meaning, "vi-VN");
+                  speak(currentWord.Meaning, "vi-VN", true);
                 } else {
-                  speak(currentWord.Word, "en-US");
+                  speak(currentWord.Word, "en-US", true);
                 }
               }}
             >
@@ -367,7 +379,6 @@ export default function Learn({ words = [] }) {
         )}
 
         {/* SPEAK ROW */}
-        {/* ─── THANH ĐIỀU KHIỂN ÂM THANH KHÔNG GIAN COMPACT (Gộp về 1 dòng) ─── */}
         <div style={{
           display: "flex",
           gap: 8,
@@ -377,11 +388,10 @@ export default function Learn({ words = [] }) {
           flexShrink: 0
         }}>
           
-          {/* 1. Nút phát âm tiếng Anh (Tự động ẩn khi đang chạy Auto-play để tránh chật màn hình) */}
           {!isPlaying && (
             <button
               disabled={isPlaying}
-              onClick={() => speak(currentWord.Word, "en-US")}
+              onClick={() => speak(currentWord.Word, "en-US", true)}
               style={{
                 flex: 1,
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
@@ -396,9 +406,7 @@ export default function Learn({ words = [] }) {
             </button>
           )}
 
-          {/* 2. CỤM TRUNG TÂM: Xử lý trạng thái thông minh */}
           {!isPlaying ? (
-            // TRẠNG THÁI GỐC: Nút Phát tự động chiếm vị trí trung tâm nổi bật
             <button
               onClick={startPlay}
               style={{
@@ -413,9 +421,7 @@ export default function Learn({ words = [] }) {
               <PlayIcon /> Phát tự động
             </button>
           ) : (
-            // TRẠNG THÁI ĐANG PHÁT: Chia đôi dòng thành 2 nút điều hướng media chuyên nghiệp
             <>
-              {/* Nút Tạm dừng / Tiếp tục */}
               <button
                 onClick={isPaused ? resumePlay : pausePlay}
                 style={{
@@ -431,7 +437,6 @@ export default function Learn({ words = [] }) {
                 {isPaused ? <PlayIcon /> : <PauseIcon />} {isPaused ? "Tiếp tục" : "Tạm dừng"}
               </button>
 
-              {/* Nút Dừng hẳn */}
               <button
                 onClick={stopPlay}
                 style={{
@@ -449,11 +454,10 @@ export default function Learn({ words = [] }) {
             </>
           )}
 
-          {/* 3. Nút đọc nghĩa tiếng Việt (Tự động ẩn khi đang chạy Auto-play) */}
           {!isPlaying && (
             <button
               disabled={isPlaying}
-              onClick={() => speak(currentWord.Meaning, "vi-VN")}
+              onClick={() => speak(currentWord.Meaning, "vi-VN", true)}
               style={{
                 flex: 1,
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
@@ -470,7 +474,6 @@ export default function Learn({ words = [] }) {
 
         </div>
 
-        {/* TIP */}
         {!isPlaying && (
           <div style={S.tip}>
             <span style={{ fontSize: 12, flexShrink: 0 }}>💡</span>
@@ -487,7 +490,7 @@ export default function Learn({ words = [] }) {
 }
 
 /* ────────────────────────────────────────────────
-   SUB-COMPONENTS
+   SUB-COMPONENTS & ICONS & STYLES (Giữ nguyên)
 ──────────────────────────────────────────────── */
 function StatusPill({ isPlaying, isPaused }) {
   const idle    = { bg: "rgba(255,255,255,0.05)", color: "#8f8fad", label: "Tự học" };
@@ -505,51 +508,6 @@ function StatusPill({ isPlaying, isPaused }) {
   );
 }
 
-function SpeakButton({ color, bg, disabled, label, onClick }) {
-  return (
-    <button
-      disabled={disabled}
-      onClick={onClick}
-      style={{
-        flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-        gap: 5, padding: "9px 8px",
-        borderRadius: 12, border: `1px solid ${C.border}`,
-        background: disabled ? C.bgPanel : bg,
-        color: disabled ? C.textDim : color,
-        fontSize: 12, fontWeight: 600,
-        cursor: disabled ? "not-allowed" : "pointer",
-        transition: "background 0.15s",
-        WebkitTapHighlightColor: "transparent",
-      }}
-    >
-      <SpeakerIcon color={disabled ? C.textDim : color} />
-      {label}
-    </button>
-  );
-}
-
-function PrimaryButton({ onClick, icon, label, style = {} }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-        gap: 6, padding: "11px 14px",
-        borderRadius: 12, border: "none",
-        background: "#4c6ef5", color: "#fff",
-        fontSize: 13, fontWeight: 700,
-        cursor: "pointer",
-        boxShadow: "0 4px 16px rgba(76,110,245,0.3)",
-        WebkitTapHighlightColor: "transparent",
-        ...style,
-      }}
-    >
-      {icon} {label}
-    </button>
-  );
-}
-
-/* ─── ICONS ─── */
 const BookIcon = () => (
   <svg width={15} height={15} viewBox="0 0 24 24" fill="none"
     stroke="#748ffc" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -601,134 +559,27 @@ const StopIcon = () => (
   </svg>
 );
 
-/* ─── STYLES ─── */
 const S = {
-  root: {
-    width: "100%", height: "100%",
-    display: "flex", flexDirection: "column",
-    padding: "0 14px 10px",
-    boxSizing: "border-box",
-    overflow: "hidden",
-    background: "transparent",
-  },
-  shell: {
-    width: "100%", height: "100%",
-    display: "flex", flexDirection: "column",
-    boxSizing: "border-box",
-  },
-  topBar: {
-    display: "flex", alignItems: "center", gap: 8,
-    marginBottom: 8, flexShrink: 0,
-  },
-  logoMark: {
-    width: 28, height: 28, borderRadius: 8,
-    background: C.purpleDim,
-    display: "flex", alignItems: "center", justifyContent: "center",
-    flexShrink: 0,
-  },
+  root: { width: "100%", height: "100%", display: "flex", flexDirection: "column", padding: "0 14px 10px", boxSizing: "border-box", overflow: "hidden", background: "transparent" },
+  shell: { width: "100%", height: "100%", display: "flex", flexDirection: "column", boxSizing: "border-box" },
+  topBar: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexShrink: 0 },
+  logoMark: { width: 28, height: 28, borderRadius: 8, background: C.purpleDim, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
   appTitle: { fontSize: 13, fontWeight: 600, color: C.textPrimary, flex: 1 },
-
-  panel: {
-    background: C.bgPanel,
-    border: `1px solid ${C.border}`,
-    borderRadius: 12, padding: "8px 12px",
-    marginBottom: 8, flexShrink: 0,
-  },
-  panelHeader: { display: "flex", justifyContent: "space-between", alignItems: "center" },
-  panelLabel: { fontSize: 11, fontWeight: 600, color: C.textMuted },
-  panelBadge: {
-    fontSize: 11, fontWeight: 700, color: C.purple,
-    background: C.purpleDim, padding: "2px 7px", borderRadius: 6,
-  },
-
-  progressRow: {
-    display: "flex", alignItems: "center", gap: 8,
-    marginBottom: 8, flexShrink: 0,
-  },
-  progressTrack: {
-    flex: 1, height: 4, background: C.bgPanel,
-    borderRadius: 99, overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    background: `linear-gradient(90deg, ${C.purpleMid}, ${C.purple})`,
-    borderRadius: 99,
-    transition: "width 0.4s cubic-bezier(0.4,0,0.2,1)",
-  },
-  progressLabel: {
-    fontSize: 11, fontWeight: 600, color: C.textDim,
-    flexShrink: 0, textAlign: "right",
-  },
-
-  /* card container wrapper */
-  cardOuter: {
-    flex: 1, minHeight: 130,
-    perspective: 1200,
-    marginBottom: 4,
-    userSelect: "none",
-    position: "relative", /* Quan trọng: làm điểm neo cho absolute motion.div */
-  },
-  cardInner: {
-    position: "relative", width: "100%", height: "100%",
-    transformStyle: "preserve-3d",
-    transition: "transform 0.45s cubic-bezier(0.4,0,0.2,1)",
-  },
-  face: {
-    position: "absolute", inset: 0,
-    borderRadius: 16, padding: 16,
-    display: "flex", flexDirection: "column",
-    justifyContent: "center", alignItems: "center",
-    backfaceVisibility: "hidden",
-    WebkitBackfaceVisibility: "hidden",
-    textAlign: "center", boxSizing: "border-box",
-  },
-  faceFront: {
-    background: "linear-gradient(145deg, #1c1c3a, #131326)",
-    border: `1px solid ${C.borderAccent}`,
-  },
-  faceBack: {
-    background: "linear-gradient(145deg, #0b2a1e, #071a12)",
-    border: `1px solid ${C.greenBorder}`,
-    transform: "rotateY(180deg)",
-  },
-  faceLang: {
-    position: "absolute", top: 11, right: 11,
-    fontSize: 10, fontWeight: 700,
-    padding: "2px 6px", borderRadius: 6,
-  },
-  wordText: {
-    fontWeight: 700, lineHeight: 1.2, textAlign: "center",
-    wordBreak: "break-word", whiteSpace: "pre-wrap",
-    marginBottom: 8,
-  },
-  hint: {
-    display: "flex", alignItems: "center", gap: 4,
-    fontSize: 11, color: C.textMuted,
-  },
-
-  swipeIndicator: {
-    display: "flex", alignItems: "center", justifyContent: "center",
-    gap: 8, marginBottom: 6, flexShrink: 0,
-  },
+  progressRow: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexShrink: 0 },
+  progressTrack: { flex: 1, height: 4, background: C.bgPanel, borderRadius: 99, overflow: "hidden" },
+  progressFill: { height: "100%", background: `linear-gradient(90deg, ${C.purpleMid}, ${C.purple})`, borderRadius: 99, transition: "width 0.4s cubic-bezier(0.4,0,0.2,1)" },
+  progressLabel: { fontSize: 11, fontWeight: 600, color: C.textDim, flexShrink: 0, textAlign: "right" },
+  cardOuter: { flex: 1, minHeight: 130, perspective: 1200, marginBottom: 4, userSelect: "none", position: "relative" },
+  cardInner: { position: "relative", width: "100%", height: "100%", transformStyle: "preserve-3d", transition: "transform 0.45s cubic-bezier(0.4,0,0.2,1)" },
+  face: { position: "absolute", inset: 0, borderRadius: 16, padding: 16, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden", textAlign: "center", boxSizing: "border-box" },
+  faceFront: { background: "linear-gradient(145deg, #1c1c3a, #131326)", border: `1px solid ${C.borderAccent}` },
+  faceBack: { background: "linear-gradient(145deg, #0b2a1e, #071a12)", border: `1px solid ${C.greenBorder}`, transform: "rotateY(180deg)" },
+  faceLang: { position: "absolute", top: 11, right: 11, fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 6 },
+  wordText: { fontWeight: 700, lineHeight: 1.2, textAlign: "center", wordBreak: "break-word", whiteSpace: "pre-wrap", marginBottom: 8 },
+  hint: { display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: C.textMuted },
+  swipeIndicator: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 6, flexShrink: 0 },
   swipeArrow: { fontSize: 14, color: C.textDim },
   swipeText:  { fontSize: 10, color: C.textDim, letterSpacing: "0.04em" },
-
-  row: { display: "flex", gap: 6, marginBottom: 6, flexShrink: 0 },
-
-  stopBtn: {
-    width: "100%", display: "flex", alignItems: "center",
-    justifyContent: "center", gap: 4, padding: "8px",
-    borderRadius: 12, border: `1px solid ${C.borderAccent}`,
-    background: C.bgPanel, color: "#9090b8",
-    fontSize: 12, fontWeight: 600, cursor: "pointer",
-    marginBottom: 4, flexShrink: 0,
-    WebkitTapHighlightColor: "transparent",
-  },
-  tip: {
-    display: "flex", alignItems: "flex-start", gap: 6,
-    background: "rgba(76,110,245,0.07)",
-    border: "1px solid rgba(76,110,245,0.15)",
-    borderRadius: 10, padding: "8px 12px", flexShrink: 0,
-  },
-  tipText: { fontSize: 11, color: C.textMuted, lineHeight: 1.45 },
+  tip: { display: "flex", alignItems: "flex-start", gap: 6, background: "rgba(76,110,245,0.07)", border: "1px solid rgba(76,110,245,0.15)", borderRadius: 10, padding: "8px 12px", flexShrink: 0 },
+  tipText: { fontSize: 11, color: C.textMuted, lineHeight: 1.45 }
 };
