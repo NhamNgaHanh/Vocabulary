@@ -277,95 +277,71 @@ export default function Learn({ words = [] }) {
           <span style={S.progressLabel}>{index + 1} / {visibleWords.length}</span>
         </div>
 
-        {/* FLASHCARD CONTAINER */}
+        {/* FLASHCARD CONTAINER (CHẾ ĐỘ THỦ CÔNG) */}
         <div style={S.cardOuter}>
           <AnimatePresence initial={false} custom={direction} mode="wait">
-            <motion.div
-              key={index}
-              custom={direction}
-              variants={cardVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              drag={isPlaying ? false : "x"}
-              dragConstraints={{ left: 0, right: 0 }}
-              dragElastic={0.2}
-              dragDirectionLock
-              style={{
-                position: "absolute",
-                inset: 0,
-                width: "100%",
-                height: "100%",
-                cursor: isPlaying ? "default" : "grab",
-                touchAction: "pan-y"
-              }}
-              whileTap={isPlaying ? {} : { cursor: "grabbing" }}
-
-              onDragEnd={(_, info) => {
-                if (isPlaying) return;
-                const x = info.offset.x;
-                const velocity = info.velocity.x;
-
-                if (x < -100 || velocity < -400) {
-                  goNext();
-                } 
-                else if (x > 100 || velocity > 400) {
-                  goPrev();
-                }
-              }}
-              onClick={() => {
-                if (isPlaying) return;
-                const nextFlipped = !isFlipped;
-                setIsFlipped(nextFlipped);
-                if (nextFlipped) {
-                  speak(currentWord.Meaning, "vi-VN", true);
-                } else {
-                  speak(currentWord.Word, "en-US", true);
-                }
-              }}
-            >
-              {/* 3-D flip inner */}
-              <div style={{
-                ...S.cardInner,
-                transform: cardFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
-              }}>
-
-                {/* FRONT */}
-                <div style={{ ...S.face, ...S.faceFront }} ref={frontRef}>
-                  <span style={{ ...S.faceLang, color: C.purple, background: C.purpleDim }}>EN</span>
-                  <div
-                    ref={frontTextRef}
-                    style={{ ...S.wordText, fontSize: frontSize, color: C.purple }}
-                  >
-                    {currentWord.Word}
-                  </div>
-                  {!isPlaying
-                    ? <div style={S.hint}><SwipeIcon /> Vuốt trái/phải · chạm để lật</div>
-                    : phase === "en"
-                      ? <div style={{ ...S.hint, color: C.purple }}><SpeakerIcon color={C.purple} /> Đang phát âm…</div>
-                      : null
+            {!isPlaying && (
+              <motion.div
+                key={index}
+                custom={direction}
+                variants={cardVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                drag="x"
+                dragConstraints={{ left: 0, right: 0 }}
+                dragElastic={0.2}
+                dragDirectionLock
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  cursor: "grab",
+                  touchAction: "pan-y"
+                }}
+                whileTap={{ cursor: "grabbing" }}
+                onDragEnd={(_, info) => {
+                  const x = info.offset.x;
+                  const velocity = info.velocity.x;
+                  if (x < -100 || velocity < -400) goNext();
+                  else if (x > 100 || velocity > 400) goPrev();
+                }}
+                onClick={() => {
+                  const nextFlipped = !isFlipped;
+                  setIsFlipped(nextFlipped);
+                  if (nextFlipped) {
+                    speak(currentWord.Meaning, "vi-VN", true);
+                  } else {
+                    speak(currentWord.Word, "en-US", true);
                   }
-                </div>
-
-                {/* BACK */}
-                <div style={{ ...S.face, ...S.faceBack }} ref={backRef}>
-                  <span style={{ ...S.faceLang, color: C.green, background: C.greenDim }}>VI</span>
-                  <div
-                    ref={backTextRef}
-                    style={{ ...S.wordText, fontSize: backSize, color: C.green }}
-                  >
-                    {currentWord.Meaning}
+                }}
+              >
+                {/* 3-D flip inner */}
+                <div style={{
+                  ...S.cardInner,
+                  transform: isFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
+                }}>
+                  {/* FRONT */}
+                  <div style={{ ...S.face, ...S.faceFront }} ref={frontRef}>
+                    <span style={{ ...S.faceLang, color: C.purple, background: C.purpleDim }}>EN</span>
+                    <div ref={frontTextRef} style={{ ...S.wordText, fontSize: frontSize, color: C.purple }}>
+                      {currentWord.Word}
+                    </div>
+                    <div style={S.hint}><SwipeIcon /> Vuốt trái/phải · chạm để lật</div>
                   </div>
-                  {!isPlaying
-                    ? <div style={{ ...S.hint, color: C.green }}><RotateIcon /> Vuốt hoặc chạm để lật</div>
-                    : phase === "vi"
-                      ? <div style={{ ...S.hint, color: C.green }}><SpeakerIcon color={C.green} /> Đang đọc nghĩa…</div>
-                      : null
-                  }
-                </div>
 
-              </div>
-            </motion.div>
+                  {/* BACK */}
+                  <div style={{ ...S.face, ...S.faceBack }} ref={backRef}>
+                    <span style={{ ...S.faceLang, color: C.green, background: C.greenDim }}>VI</span>
+                    <div ref={backTextRef} style={{ ...S.wordText, fontSize: backSize, color: C.green }}>
+                      {currentWord.Meaning}
+                    </div>
+                    <div style={{ ...S.hint, color: C.green }}><RotateIcon /> Vuốt hoặc chạm để lật</div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
         </div>
 
@@ -378,100 +354,25 @@ export default function Learn({ words = [] }) {
           </div>
         )}
 
-        {/* SPEAK ROW */}
-        <div style={{
-          display: "flex",
-          gap: 8,
-          padding: "0 16px 12px",
-          width: "100%",
-          boxSizing: "border-box",
-          flexShrink: 0
-        }}>
-          
+        {/* SPEAK ROW / BOTTOM CONTROL */}
+        <div style={S.controlRow}>
           {!isPlaying && (
-            <button
-              disabled={isPlaying}
-              onClick={() => speak(currentWord.Word, "en-US", true)}
-              style={{
-                flex: 1,
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
-                background: "rgba(76, 110, 245, 0.1)",
-                border: "1px solid rgba(76, 110, 245, 0.2)",
-                color: "#748ffc",
-                borderRadius: 12, padding: "12px 8px", fontSize: 12, fontWeight: 600,
-                cursor: "pointer", transition: "all 0.2s"
-              }}
-            >
+            <button onClick={() => speak(currentWord.Word, "en-US", true)} style={S.langBtnEn}>
               🔊 EN
             </button>
           )}
 
-          {!isPlaying ? (
-            <button
-              onClick={startPlay}
-              style={{
-                flex: 2,
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                background: "#4c6ef5",
-                border: "none", color: "#fff",
-                borderRadius: 12, padding: "12px 16px", fontSize: 13, fontWeight: 700,
-                cursor: "pointer", boxShadow: "0 4px 12px rgba(76, 110, 245, 0.3)"
-              }}
-            >
+          {!isPlaying && (
+            <button onClick={startPlay} style={S.playBtn}>
               <PlayIcon /> Phát tự động
             </button>
-          ) : (
-            <>
-              <button
-                onClick={isPaused ? resumePlay : pausePlay}
-                style={{
-                  flex: 1,
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                  background: isPaused ? "#4c6ef5" : "#1e1e38",
-                  border: isPaused ? "none" : "1px solid #2e2e5e",
-                  color: "#fff",
-                  borderRadius: 12, padding: "12px 8px", fontSize: 12, fontWeight: 600,
-                  cursor: "pointer"
-                }}
-              >
-                {isPaused ? <PlayIcon /> : <PauseIcon />} {isPaused ? "Tiếp tục" : "Tạm dừng"}
-              </button>
-
-              <button
-                onClick={stopPlay}
-                style={{
-                  flex: 1,
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                  background: "rgba(239, 68, 68, 0.12)",
-                  border: "1px solid rgba(239, 68, 68, 0.25)",
-                  color: "#ef4444",
-                  borderRadius: 12, padding: "12px 8px", fontSize: 12, fontWeight: 600,
-                  cursor: "pointer"
-                }}
-              >
-                <StopIcon /> Dừng lại
-              </button>
-            </>
           )}
 
           {!isPlaying && (
-            <button
-              disabled={isPlaying}
-              onClick={() => speak(currentWord.Meaning, "vi-VN", true)}
-              style={{
-                flex: 1,
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
-                background: "rgba(52, 211, 153, 0.08)",
-                border: "1px solid rgba(52, 211, 153, 0.2)",
-                color: "#34d399",
-                borderRadius: 12, padding: "12px 8px", fontSize: 12, fontWeight: 600,
-                cursor: "pointer", transition: "all 0.2s"
-              }}
-            >
+            <button onClick={() => speak(currentWord.Meaning, "vi-VN", true)} style={S.langBtnVi}>
               🔊 VI
             </button>
           )}
-
         </div>
 
         {!isPlaying && (
@@ -483,6 +384,83 @@ export default function Learn({ words = [] }) {
             </span>
           </div>
         )}
+
+        {/* ─────────────────────────────────────────────────────────
+            MODAL PHÁT TỰ ĐỘNG TOÀN MÀN HÌNH (CHIẾM TRỌN VIEW KHÔNG BỊ PHỤ THUỘC)
+           ───────────────────────────────────────────────────────── */}
+        <AnimatePresence>
+          {isPlaying && (
+            <motion.div 
+              style={S.modalBackdrop}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <motion.div 
+                style={S.modalContent}
+                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              >
+                {/* Header Modal */}
+                <div style={S.modalHeader}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    <span style={S.modalTitle}>⚡ Đang phát tự động</span>
+                    <span style={S.modalSubtitle}>Từ số {index + 1} trên tổng {visibleWords.length} từ</span>
+                  </div>
+                  <button style={S.modalCloseBtn} onClick={stopPlay}>✕ Dừng</button>
+                </div>
+
+                {/* Khung thẻ bên trong Modal (Được giới hạn chiều cao hợp lý) */}
+                <div style={S.modalCardContainer}>
+                  <div style={{
+                    ...S.cardInner,
+                    transform: cardFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
+                  }}>
+                    {/* FRONT */}
+                    <div style={{ ...S.face, ...S.faceFront }} ref={frontRef}>
+                      <span style={{ ...S.faceLang, color: C.purple, background: C.purpleDim }}>EN</span>
+                      <div ref={frontTextRef} style={{ ...S.wordText, fontSize: frontSize, color: C.purple }}>
+                        {currentWord.Word}
+                      </div>
+                      {phase === "en" && (
+                        <div style={{ ...S.hint, color: C.purple }}><SpeakerIcon color={C.purple} /> Đang phát âm…</div>
+                      )}
+                    </div>
+
+                    {/* BACK */}
+                    <div style={{ ...S.face, ...S.faceBack }} ref={backRef}>
+                      <span style={{ ...S.faceLang, color: C.green, background: C.greenDim }}>VI</span>
+                      <div ref={backTextRef} style={{ ...S.wordText, fontSize: backSize, color: C.green }}>
+                        {currentWord.Meaning}
+                      </div>
+                      {phase === "vi" && (
+                        <div style={{ ...S.hint, color: C.green }}><SpeakerIcon color={C.green} /> Đang đọc nghĩa…</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Thanh tiến trình riêng bên trong Modal */}
+                <div style={{ ...S.progressTrack, margin: "16px 0", height: 6 }}>
+                  <div style={{ ...S.progressFill, width: `${progressPct}%` }} />
+                </div>
+
+                {/* Các nút điều khiển dưới đáy Modal */}
+                <div style={{ display: "flex", gap: 10, width: "100%" }}>
+                  <button onClick={isPaused ? resumePlay : pausePlay} style={S.modalPauseBtn(isPaused)}>
+                    {isPaused ? <PlayIcon /> : <PauseIcon />} {isPaused ? "Tiếp tục" : "Tạm dừng"}
+                  </button>
+                  <button onClick={stopPlay} style={S.modalStopBtn}>
+                    <StopIcon /> Thoát phát
+                  </button>
+                </div>
+
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
       </div>
     </div>
@@ -554,7 +532,7 @@ const PauseIcon = () => (
 );
 
 const StopIcon = () => (
-  <svg width={11} height={11} viewBox="0 0 24 24" fill="#8f8fad">
+  <svg width={11} height={11} viewBox="0 0 24 24" fill="#ef4444">
     <rect x="3" y="3" width="18" height="18" rx="3"/>
   </svg>
 );
@@ -566,7 +544,7 @@ const S = {
   logoMark: { width: 28, height: 28, borderRadius: 8, background: C.purpleDim, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
   appTitle: { fontSize: 13, fontWeight: 600, color: C.textPrimary, flex: 1 },
   progressRow: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexShrink: 0 },
-  progressTrack: { flex: 1, height: 4, background: C.bgPanel, borderRadius: 99, overflow: "hidden" },
+  progressTrack: { flex: 1, height: 4, background: C.bgPanel, borderRadius: 99, overflow: "hidden", position: "relative" },
   progressFill: { height: "100%", background: `linear-gradient(90deg, ${C.purpleMid}, ${C.purple})`, borderRadius: 99, transition: "width 0.4s cubic-bezier(0.4,0,0.2,1)" },
   progressLabel: { fontSize: 11, fontWeight: 600, color: C.textDim, flexShrink: 0, textAlign: "right" },
   cardOuter: { flex: 1, minHeight: 130, perspective: 1200, marginBottom: 4, userSelect: "none", position: "relative" },
@@ -581,5 +559,80 @@ const S = {
   swipeArrow: { fontSize: 14, color: C.textDim },
   swipeText:  { fontSize: 10, color: C.textDim, letterSpacing: "0.04em" },
   tip: { display: "flex", alignItems: "flex-start", gap: 6, background: "rgba(76,110,245,0.07)", border: "1px solid rgba(76,110,245,0.15)", borderRadius: 10, padding: "8px 12px", flexShrink: 0 },
-  tipText: { fontSize: 11, color: C.textMuted, lineHeight: 1.45 }
+  tipText: { fontSize: 11, color: C.textMuted, lineHeight: 1.45 },
+  controlRow: { display: "flex", gap: 8, padding: "0 16px 12px", width: "100%", boxSizing: "border-box", flexShrink: 0 },
+  langBtnEn: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, background: "rgba(76, 110, 245, 0.1)", border: "1px solid rgba(76, 110, 245, 0.2)", color: "#748ffc", borderRadius: 12, padding: "12px 8px", fontSize: 12, fontWeight: 600, cursor: "pointer" },
+  langBtnVi: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, background: "rgba(52, 211, 153, 0.08)", border: "1px solid rgba(52, 211, 153, 0.2)", color: "#34d399", borderRadius: 12, padding: "12px 8px", fontSize: 12, fontWeight: 600, cursor: "pointer" },
+  playBtn: { flex: 2, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: "#4c6ef5", border: "none", color: "#fff", borderRadius: 12, padding: "12px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 12px rgba(76, 110, 245, 0.3)" },
+
+  /* ── STYLES CHO MODAL PHÁT TỰ ĐỘNG TÁCH BIỆT ── */
+  modalBackdrop: {
+    position: "fixed",
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: "rgba(6, 6, 15, 0.85)",
+    backdropFilter: "blur(6px)",
+    WebkitBackdropFilter: "blur(6px)",
+    zIndex: 9999,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20
+  },
+  modalContent: {
+    background: "#101021",
+    border: "1px solid #1f1f3d",
+    borderRadius: 24,
+    width: "100%",
+    maxWidth: 400,
+    height: "90vh",
+    //maxHeight: "90vh", // Giới hạn chiều cao tối đa của modal là 85% màn hình
+    padding: 24,
+    display: "flex",
+    flexDirection: "column",
+    boxShadow: "0 20px 50px rgba(0,0,0,0.6)",
+    boxSizing: "border-box"
+  },
+  modalHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 20,
+    width: "100%"
+  },
+  modalTitle: { fontSize: 15, fontWeight: 700, color: C.textPrimary },
+  modalSubtitle: { fontSize: 12, color: C.textMuted },
+  modalCloseBtn: {
+    background: "rgba(239, 68, 68, 0.1)",
+    border: "1px solid rgba(239, 68, 68, 0.2)",
+    color: "#ef4444",
+    fontSize: 12,
+    fontWeight: 600,
+    borderRadius: 8,
+    padding: "6px 12px",
+    cursor: "pointer"
+  },
+  modalCardContainer: {
+    width: "100%",
+    height: "75vh", // Khóa cố định chiều cao hợp lý cho chiếc thẻ chạy tự động bên trong modal
+    perspective: 1200,
+    position: "relative"
+  },
+  modalPauseBtn: (isPaused) => ({
+    flex: 1,
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+    background: isPaused ? "#4c6ef5" : "#1b1b35",
+    border: isPaused ? "none" : "1px solid #2e2e5e",
+    color: "#fff",
+    borderRadius: 14, padding: "14px 8px", fontSize: 13, fontWeight: 600,
+    cursor: "pointer"
+  }),
+  modalStopBtn: {
+    flex: 1,
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+    background: "rgba(239, 68, 68, 0.1)",
+    border: "1px solid rgba(239, 68, 68, 0.2)",
+    color: "#ef4444",
+    borderRadius: 14, padding: "14px 8px", fontSize: 13, fontWeight: 600,
+    cursor: "pointer"
+  }
 };
