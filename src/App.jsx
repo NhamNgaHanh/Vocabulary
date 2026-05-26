@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from "axios";
 import dayjs from "dayjs";
 import Learn from "./Learn";
@@ -35,6 +35,7 @@ const styles = {
     flexDirection: "column",
     overflow: "hidden",
     boxSizing: "border-box",
+    position: "relative"
   },
   header: {
     display: "flex",
@@ -61,6 +62,11 @@ const styles = {
     marginTop: 4,
     fontWeight: 500,
   },
+  rightHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10
+  },
   streakBadge: {
     background: "linear-gradient(135deg, #ff6b6b, #ff8787)",
     borderRadius: 20,
@@ -71,6 +77,20 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: 6,
+  },
+  configBtn: {
+    background: THEME.bgCard,
+    border: `1px solid ${THEME.border}`,
+    color: THEME.textPrimary,
+    borderRadius: "50%",
+    width: 36,
+    height: 36,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    fontSize: 18,
+    transition: "all 0.2s",
   },
   statsBar: {
     display: "flex",
@@ -85,7 +105,7 @@ const styles = {
     padding: "clamp(10px, 1.5dvh, 14px) 10px",
     textAlign: "center",
     border: `1px solid ${borderColor}`,
-    transition: "all 0.25s ease",
+    transition: "all 0.2s ease",
     cursor: "pointer",
     userSelect: "none",
   }),
@@ -103,29 +123,6 @@ const styles = {
     textTransform: "uppercase",
     letterSpacing: 0.8,
     fontWeight: 600,
-  },
-  rangePanel: {
-    background: THEME.bgPanel,
-    borderTop: `1px solid ${THEME.border}`,
-    borderBottom: `1px solid ${THEME.border}`,
-    padding: "12px 20px",
-    margin: "0 0 12px 0",
-    flexShrink: 0,
-  },
-  panelHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  panelLabel: { fontSize: 12, fontWeight: 600, color: THEME.textMuted },
-  panelBadge: {
-    fontSize: 11,
-    fontWeight: 700,
-    color: THEME.accent,
-    background: THEME.accentGlow,
-    padding: "3px 8px",
-    borderRadius: 6,
   },
   tabsWrapper: {
     display: "flex",
@@ -191,9 +188,63 @@ const styles = {
     animation: "spin 0.8s linear infinite",
   },
   loadingText: { color: THEME.textMuted, fontSize: 14, fontWeight: 500 },
+
+  // STYLES DÀNH RIÊNG CHO MODAL NỔI
+  modalBackdrop: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: "100vw",
+    height: "100vh",
+    backgroundColor: "rgba(5, 5, 10, 0.8)",
+    backdropFilter: "blur(6px)",
+    WebkitBackdropFilter: "blur(6px)",
+    zIndex: 2000,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+  },
+  modalContent: {
+    background: THEME.bgPanel,
+    border: `1px solid ${THEME.border}`,
+    borderRadius: 24,
+    width: "100%",
+    maxWidth: 360,
+    padding: 24,
+    boxShadow: "0 20px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05)",
+  },
+  modalHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  modalTitle: { fontSize: 16, fontWeight: 700, color: THEME.textPrimary },
+  modalCloseBtn: {
+    background: "transparent",
+    border: "none",
+    color: THEME.textMuted,
+    fontSize: 20,
+    cursor: "pointer",
+    padding: 4,
+  },
+  modalFooterBtn: {
+    width: "100%",
+    padding: "12px 0",
+    background: THEME.accent,
+    color: "#fff",
+    border: "none",
+    borderRadius: 12,
+    fontWeight: 600,
+    fontSize: 14,
+    cursor: "pointer",
+    marginTop: 20,
+    boxShadow: `0 4px 12px ${THEME.accentGlow}`,
+    transition: "opacity 0.2s",
+  }
 };
 
-// Inject Global CSS phục vụ Animation và Custom Range Slider
 const injectStyles = () => {
   if (document.getElementById("app-global-styles")) return;
   const el = document.createElement("style");
@@ -204,35 +255,252 @@ const injectStyles = () => {
       from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
       to   { opacity: 1; transform: translateX(-50%) translateY(0); }
     }
+    @keyframes zoomIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to   { opacity: 1; transform: scale(1); }
+    }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body, html { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; background: ${THEME.bgPage}; }
-    input[type="range"] {
-      -webkit-appearance: none; width: 100%; height: 6px; background: ${THEME.border}; borderRadius: 3px; outline: none;
-    }
-    input[type="range"]::-webkit-slider-thumb {
-      -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: ${THEME.accent}; cursor: pointer; transition: transform 0.1s;
-    }
-    input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
   `;
   document.head.appendChild(el);
 };
 
-// Component Slider cải tiến giao diện gọn gàng hơn
+// Component Núm Vặn Tròn Slider
+// Component Núm Vặn Tròn Slider (Nâng cấp)
 function SliderRow({ label, min, max, value, disabled, onChange }) {
+  const knobRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
+  // State cục bộ phục vụ việc gõ phím tạm thời (tránh bị nhảy số khi người dùng đang gõ dở)
+  const [inputValue, setInputValue] = useState(value);
+
+  // Đồng bộ lại inputValue khi value từ cha thay đổi (ví dụ do vặn núm)
+  useEffect(() => {
+    setInputValue(value);
+  }, [value]);
+
+  const pct = (value - min) / (max - min || 1);
+  const currentAngle = -135 + pct * 270;
+
+  // Arc SVG params
+  const SIZE = 64;
+  const R = 26;
+  const CX = SIZE / 2;
+  const CY = SIZE / 2;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const polarX = (deg) => CX + R * Math.sin(toRad(deg));
+  const polarY = (deg) => CY - R * Math.cos(toRad(deg));
+
+  const arcPath = (startDeg, endDeg) => {
+    const x1 = polarX(startDeg), y1 = polarY(startDeg);
+    const x2 = polarX(endDeg),   y2 = polarY(endDeg);
+    const large = endDeg - startDeg > 180 ? 1 : 0;
+    return `M ${x1} ${y1} A ${R} ${R} 0 ${large} 1 ${x2} ${y2}`;
+  };
+
+  // 1. Xử lý logic Xoay Núm Vặn
+  const handlePointerMove = (e) => {
+    if (!knobRef.current || disabled) return;
+    const rect = knobRef.current.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const clientX = e.clientX ?? e.touches?.[0]?.clientX;
+    const clientY = e.clientY ?? e.touches?.[0]?.clientY;
+    if (clientX === undefined || clientY === undefined) return;
+    const angleRad = Math.atan2(clientY - centerY, clientX - centerX);
+    let angleDeg = angleRad * (180 / Math.PI) + 90;
+    if (angleDeg > 180) angleDeg -= 360;
+    if (angleDeg < -180) angleDeg += 360;
+    let targetAngle = Math.max(-135, Math.min(135, angleDeg));
+    const targetPct = (targetAngle + 135) / 270;
+    const newValue = Math.round(min + targetPct * (max - min));
+    if (newValue !== value) onChange(newValue);
+  };
+
+  const handlePointerDown = (e) => {
+    if (disabled) return;
+    setIsDragging(true);
+    e.target.setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerUp = (e) => {
+    setIsDragging(false);
+    try { e.target.releasePointerCapture(e.pointerId); } catch {}
+  };
+
+  // 2. Xử lý logic Nhập số trực tiếp từ Bàn phím
+  const handleInputChange = (e) => {
+    const val = e.target.value;
+    setInputValue(val); // Cập nhật hiển thị text liên tục khi đang gõ
+
+    const parsed = parseInt(val, 10);
+    if (!isNaN(parsed)) {
+      // Ép số nằm trong phạm vi an toàn [min, max] trước khi báo lên cha
+      const clamped = Math.max(min, Math.min(max, parsed));
+      if (clamped !== value) {
+        onChange(clamped);
+      }
+    }
+  };
+
+  // Khi người dùng click ra ngoài hoặc bấm Enter: Đảm bảo số hiển thị được chuẩn hóa sạch sẽ
+  const handleInputBlur = () => {
+    const parsed = parseInt(inputValue, 10);
+    if (isNaN(parsed) || parsed < min) {
+      onChange(min);
+      setInputValue(min);
+    } else if (parsed > max) {
+      onChange(max);
+      setInputValue(max);
+    } else {
+      setInputValue(parsed);
+    }
+  };
+
+  const trackColor = "#1f1f3d";
+  const fillColor = isDragging ? "#748ffc" : THEME.accent;
+
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
-      <span style={{ fontSize: 12, color: THEME.textMuted, width: 50, flexShrink: 0, fontWeight: 500 }}>{label}</span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(Number(e.target.value))}
-      />
-      <span style={{ fontSize: 13, fontWeight: 700, color: THEME.textPrimary, width: 30, textAlign: "right", flexShrink: 0 }}>
-        {value}
+    <div style={{
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginTop: 20,
+      padding: "4px 0",
+    }}>
+      <span style={{
+        fontSize: 13,
+        color: THEME.textMuted,
+        fontWeight: 500,
+        minWidth: 60,
+      }}>
+        {label}
       </span>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        {/* Knob container */}
+        <div
+          ref={knobRef}
+          onPointerDown={handlePointerDown}
+          onPointerMove={isDragging ? handlePointerMove : undefined}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          style={{
+            width: SIZE,
+            height: SIZE,
+            position: "relative",
+            cursor: disabled ? "not-allowed" : isDragging ? "grabbing" : "grab",
+            opacity: disabled ? 0.4 : 1,
+            touchAction: "none",
+            flexShrink: 0,
+          }}
+        >
+          {/* SVG Arc */}
+          <svg
+            width={SIZE}
+            height={SIZE}
+            viewBox={`0 0 ${SIZE} ${SIZE}`}
+            style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none" }}
+          >
+            {/* Track arc */}
+            <path
+              d={arcPath(-135, 135)}
+              fill="none"
+              stroke={trackColor}
+              strokeWidth={4}
+              strokeLinecap="round"
+            />
+            {/* Fill arc */}
+            {pct > 0 && (
+              <path
+                d={arcPath(-135, currentAngle)}
+                fill="none"
+                stroke={fillColor}
+                strokeWidth={4}
+                strokeLinecap="round"
+                style={{ transition: isDragging ? "none" : "stroke 0.15s" }}
+              />
+            )}
+          </svg>
+
+          {/* Knob body */}
+          <div style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            width: 44,
+            height: 44,
+            borderRadius: "50%",
+            background: "linear-gradient(145deg, #1c1c38, #0f0f22)",
+            border: `2px solid ${isDragging ? THEME.accent : "#252548"}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: isDragging
+              ? `0 0 0 3px ${THEME.accentGlow}, inset 0 2px 4px rgba(0,0,0,0.5)`
+              : "inset 0 2px 4px rgba(0,0,0,0.5)",
+            transition: "border-color 0.15s, box-shadow 0.15s",
+          }}>
+            {/* Pointer tick */}
+            <div style={{
+              position: "absolute",
+              width: 3,
+              height: 12,
+              background: fillColor,
+              borderRadius: 99,
+              top: "50%",
+              marginTop: -12,
+              transformOrigin: "50% 100%",
+              transform: `rotate(${currentAngle}deg)`,
+              transition: isDragging ? "none" : "background 0.15s",
+            }} />
+            {/* Center dot */}
+            <div style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: "#0c0c18",
+              border: `1.5px solid #2a2a50`,
+            }} />
+          </div>
+        </div>
+
+        {/* Ô NHẬP GIÁ TRỊ (Được chuyển đổi từ Div sang Input số thông minh) */}
+        <input
+          type="number"
+          min={min}
+          max={max}
+          disabled={disabled}
+          value={inputValue}
+          onChange={handleInputChange}
+          onBlur={handleInputBlur}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              handleInputBlur();
+              e.currentTarget.blur(); // Tự động bỏ focus khi ấn Enter
+            }
+          }}
+          style={{
+            width: 64, // Tăng nhẹ độ rộng để vừa các số lớn (> 1000)
+            background: THEME.bgCard,
+            border: `1px solid ${isDragging ? THEME.accent : THEME.border}`,
+            borderRadius: 10,
+            padding: "7px 4px",
+            textAlign: "center",
+            fontFamily: "'Space Grotesk', sans-serif",
+            fontSize: 15,
+            fontWeight: 700,
+            color: isDragging ? fillColor : THEME.textPrimary,
+            lineHeight: 1,
+            outline: "none",
+            transition: "border-color 0.15s, color 0.15s, box-shadow 0.15s",
+            WebkitAppearance: "none",
+            MozAppearance: "textfield",
+          }}
+          // Tiện ích ẩn hai mũi tên lên/xuống mặc định của input number để giữ UI sạch đẹp
+          className="hide-arrows"
+        />
+      </div>
     </div>
   );
 }
@@ -247,13 +515,13 @@ function App() {
   const [totalWords, setTotalWords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState({ show: false, type: "", message: "" });
-  const [streak] = useState(7);
+  const [streak, setStreak] = useState(0);
+  
   const [rememberedWords, setRememberedWords] = useState([]);
-  const [nonRemembered, setNonRemembered] = useState([]);
-  const [LearningWords, setLearningWords] = useState(0);
-  const [startdayindex, setStartdayindex] = useState(0);
-  const [showRange, setShowRange] = useState(false);
-  // Phân đoạn Range Slider học tập
+  const [nonRemembered, setNonRemembered] = useState([]);
+  const [learningWords, setLearningWords] = useState([]); 
+  const [showRangeModal, setShowRangeModal] = useState(false); // <-- Quản lý ẩn hiện Modal dạng thẻ nổi
+  
   const [rangeStart, setRangeStart] = useState(1);
   const [rangeEnd, setRangeEnd] = useState(1);
 
@@ -262,49 +530,7 @@ function App() {
     setTimeout(() => setToast(t => ({ ...t, show: false })), 3000);
   };
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const sheetId = "18aKZQSaFWhP1yV-XJAKPLEt2dMPkgtHkXPo3PLppySQ";
-        const apiKey = "AIzaSyCmL1B_6Lv3wu7OtUjVyLx3CufpckGZnW4";
-        const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Sheet1?key=${apiKey}`;
-        const res = await axios.get(url);
-        
-        const allWords = res?.data?.values?.slice(1)?.map(row => ({
-          Word: row[0], Meaning: row[1], Status: row[2]
-        })) || [];
-        setTotalWords(allWords);
-        setRangeStart(1);
-        setRangeEnd(allWords.length || 1);
-        const today = dayjs();
-        const startday = res?.data?.values?.[0]?.[3]
-          ? dayjs(res.data.values[0][3], "DD/MM/YYYY")
-          : dayjs();
-        const diffDays = today.diff(startday, "day");
-        const startdayindex = (diffDays * 20);
-        const enddayindex = startdayindex + 20;
-        setRangeStart(Math.max(1, Math.min(startdayindex, allWords.length)));
-        setRangeEnd(Math.max(1, Math.min(enddayindex, allWords.length)));
-        const formattedData = res?.data?.values?.slice(1+ diffDays * 20, 1 + (diffDays + 1) * 20)?.map(row => ({
-          Word: row[0], Meaning: row[1], Status: row[2]
-        })) || [];
-        const rememberedWords = formattedData.filter(w => w.Status === "1");
-        setRememberedWords(rememberedWords);
-        const nonRemembered = formattedData.filter(w => w.Status !== "1");
-        setNonRemembered(nonRemembered);
-        const shuffled = formattedData.sort(() => Math.random() - 0.5);
-        setLearningWords(shuffled);
-        showToast("success", `Hệ thống đã sẵn sàng với ${allWords.length} từ vựng`);
-      } catch (err) {
-        showToast("error", "Không tải được dữ liệu từ Cloud");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, []);
-  const handfetchData = async () => {
-    setLoading(true);
+  const loadCloudData = async (isFirstLoad = false) => {
     try {
       const sheetId = "18aKZQSaFWhP1yV-XJAKPLEt2dMPkgtHkXPo3PLppySQ";
       const apiKey = "AIzaSyCmL1B_6Lv3wu7OtUjVyLx3CufpckGZnW4";
@@ -314,48 +540,53 @@ function App() {
       const allWords = res?.data?.values?.slice(1)?.map(row => ({
         Word: row[0], Meaning: row[1], Status: row[2]
       })) || [];
+      
+      if (allWords.length === 0) return;
+
       setTotalWords(allWords);
-      setRangeStart(1);
-      setRangeEnd(allWords.length || 1);
+
       const today = dayjs();
-        const startday = res?.data?.values?.[0]?.[3]
-          ? dayjs(res.data.values[0][3], "DD/MM/YYYY")
-          : dayjs();
-        const diffDays = today.diff(startday, "day");
-        const startdayindex = (diffDays * 20);
-      const enddayindex = startdayindex + 20;
-      setRangeStart(Math.max(1, Math.min(startdayindex, allWords.length)));
-      setRangeEnd(Math.max(1, Math.min(enddayindex, allWords.length)));
-        const formattedData = res?.data?.values?.slice(1+ diffDays * 20, 1 + (diffDays + 1) * 20)?.map(row => ({
-          Word: row[0], Meaning: row[1], Status: row[2]
-        })) || [];
-        const rememberedWords = formattedData.filter(w => w.Status === "1");
-        setRememberedWords(rememberedWords);
-        const nonRemembered = formattedData.filter(w => w.Status !== "1");
-        setNonRemembered(nonRemembered);
-        const shuffled = formattedData.sort(() => Math.random() - 0.5);
-        setLearningWords(shuffled);
-      showToast("success", `Hệ thống đã sẵn sàng với ${allWords.length} từ vựng`);
+      const startday = res?.data?.values?.[0]?.[3]
+        ? dayjs(res.data.values[0][3], "DD/MM/YYYY")
+        : dayjs();
+      const rangeSize = res?.data?.values?.[0]?.[4] ? parseInt(res.data.values[0][4], 10) : 20;
+      setStreak(rangeSize);
+      const diffDays = today.diff(startday, "day");
+      const startdayindex = diffDays * rangeSize;
+      const enddayindex = startdayindex + rangeSize;
+
+      const defaultStart = Math.max(1, Math.min(startdayindex + 1, allWords.length));
+      const defaultEnd = Math.max(1, Math.min(enddayindex, allWords.length));
+      setRangeStart(defaultStart);
+      setRangeEnd(defaultEnd);
+      const filtered = allWords.slice(defaultStart - 1, defaultEnd);
+      setRememberedWords(filtered.filter(w => w.Status === "1"));
+      setNonRemembered(filtered.filter(w => w.Status !== "1"));
+      setLearningWords([...filtered].sort(() => Math.random() - 0.5));
+      if (isFirstLoad) {
+        showToast("success", `Hệ thống đã sẵn sàng với ${allWords.length} từ vựng`);
+      }
     } catch (err) {
       showToast("error", "Không tải được dữ liệu từ Cloud");
     } finally {
       setLoading(false);
     }
   };
-  // Tính toán danh sách lọc động dựa trên vị trí thanh Slider
+
+  useEffect(() => {
+    loadCloudData(true);
+  }, []);
+
   const startIdx = Math.max(1, Math.min(rangeStart, totalWords.length || 1));
   const endIdx = Math.max(startIdx, Math.min(rangeEnd, totalWords.length || 1));
+  
   useEffect(() => {
+    if (totalWords.length === 0) return;
     const filtered = totalWords.slice(startIdx - 1, endIdx);
     setRememberedWords(filtered.filter(w => w.Status === "1"));
     setNonRemembered(filtered.filter(w => w.Status !== "1"));
-    setLearningWords(filtered.sort(() => Math.random() - 0.5));
-  }, [startIdx, endIdx]);
-
-
-  // Thống kê phân nhóm dựa trên dải dữ liệu người dùng lựa chọn lọc
-  // const rememberedWords = visibleWords.filter(w => w.Status === "1");
-  // const nonRemembered = visibleWords.filter(w => w.Status !== "1");
+    setLearningWords([...filtered].sort(() => Math.random() - 0.5));
+  }, [startIdx, endIdx, totalWords]);
 
   const handleClickReset = async () => {
     if(!window.confirm("Bạn muốn reset lại trạng thái học tập của dải từ này?")) return;
@@ -375,8 +606,7 @@ function App() {
       console.error("Lỗi đồng bộ:", error);
       showToast("error", "Đồng bộ thất bại");
     } finally {
-      setLoading(false);
-      handfetchData();
+      loadCloudData();
     }
   };
 
@@ -400,16 +630,26 @@ function App() {
             <div style={styles.appName}>VocaLearn</div>
             <div style={styles.appSub}>Học từ vựng thông minh</div>
           </div>
-          <div style={styles.streakBadge}>🔥 {streak} NGÀY</div>
+          <div style={styles.rightHeader}>
+            <div style={styles.streakBadge}>🔥 {streak} Từ/Ngày</div>
+            {/* Nút bấm mở thẻ cấu hình nổi */}
+            <button 
+              style={styles.configBtn} 
+              onClick={() => setShowRangeModal(true)}
+              title="Cấu hình mục tiêu"
+            >
+              ⚙️
+            </button>
+          </div>
         </div>
 
         {/* Dashboard Thống Kê */}
         <div style={styles.statsBar}>
           <div style={styles.statCard(THEME.accent)} onClick={handleClickReset} title="Nhấn để reset trạng thái từ">
-            <div style={styles.statNum(THEME.accent)}>{LearningWords.length}</div>
+            <div style={styles.statNum(THEME.accent)}>{learningWords.length}</div>
             <div style={styles.statLabel}>🎯 Phạm vi học</div>
           </div>
-          <div style={styles.statCard()} onClick={() => setShowRange(prev => !prev)} >
+          <div style={styles.statCard(showRangeModal ? THEME.accent : THEME.border)} onClick={() => setShowRangeModal(true)} >
             <div style={styles.statNum(THEME.success)}>{rememberedWords.length}</div>
             <div style={styles.statLabel}>💚 Đã thuộc</div>
           </div>
@@ -419,41 +659,57 @@ function App() {
           </div>
         </div>
 
-        {/* Bảng Điều Khiển Khoảng Lọc */}
-        <div style={{ ...styles.rangePanel, display: !showRange ? "none" : "block", }}>
-          <div style={styles.panelHeader}>
-            <span style={styles.panelLabel}>Cấu hình mục tiêu học tập</span>
-            <span style={styles.panelBadge}>
-              Hiển thị: {LearningWords.length} / {totalWords.length} Từ
-            </span>
+        {/* MODAL / THẺ NỔI CẤU HÌNH MỤC TIÊU (Được tách riêng tại đây) */}
+        {showRangeModal && (
+          <div style={styles.modalBackdrop} onClick={() => setShowRangeModal(false)}>
+            <div 
+              style={{ ...styles.modalContent, animation: "zoomIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)" }} 
+              onClick={(e) => e.stopPropagation()} // Chặn tắt modal khi click vào bên trong panel
+            >
+              <div style={styles.modalHeader}>
+                <span style={styles.modalTitle}>🎯 Cấu hình mục tiêu</span>
+                <button style={styles.modalCloseBtn} onClick={() => setShowRangeModal(false)}>✕</button>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: THEME.textMuted, marginBottom: 8 }}>
+                <span>Tổng số từ khả dụng:</span>
+                <span style={{ color: THEME.accent, fontWeight: 700 }}>{totalWords.length} Từ</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: THEME.textMuted }}>
+                <span>Đang chọn hiển thị:</span>
+                <span style={{ color: THEME.success, fontWeight: 700 }}>{learningWords.length} Từ</span>
+              </div>
+
+              <hr style={{ border: "none", borderTop: `1px solid ${THEME.border}`, margin: "16px 0 8px 0" }} />
+              
+              <SliderRow
+                label="Từ số:"
+                min={1} 
+                max={totalWords.length || 1} 
+                value={startIdx}
+                onChange={(v) => {
+                  setRangeStart(v);
+                  if (v > endIdx) setRangeEnd(v);
+                }}
+              />
+              
+              <SliderRow
+                label="Đến số:"
+                min={1}
+                max={totalWords.length || 1} 
+                value={endIdx}
+                onChange={(v) => {
+                  setRangeEnd(v);
+                  if (v < startIdx) setRangeStart(v);
+                }}
+              />
+
+              <button style={styles.modalFooterBtn} onClick={() => setShowRangeModal(false)}>
+                Áp dụng cấu hình
+              </button>
+            </div>
           </div>
-          <SliderRow
-            label="Từ số:"
-            min={1} 
-            max={totalWords.length || 1} 
-            value={startIdx}
-            onChange={(v) => {
-              setRangeStart(v);
-              if (v > endIdx) {
-                setRangeEnd(v);
-              }
-            }}
-          />
-          
-          {/* Thanh kéo chọn điểm kết thúc */}
-          <SliderRow
-            label="Đến số:"
-            min={1}
-            max={totalWords.length || 1} 
-            value={endIdx}
-            onChange={(v) => {
-              setRangeEnd(v);
-              if (v < startIdx) {
-                setRangeStart(v);
-              }
-            }}
-          />
-        </div>
+        )}
 
         {/* Hệ Thống Thanh Tab */}
         <div style={styles.tabsWrapper}>
@@ -466,13 +722,18 @@ function App() {
         </div>
 
         {/* Khu Vực Hiển Thị Thẻ Học */}
-        {/* MẸO: Sử dụng key gắn liền với khoảng filter giúp các component con tự động reset vị trí index về 0 khi kéo thanh cuộn */}
         <div style={styles.content}>
           {activeTab === "1" && (
-            <Learn key={`learn-${startIdx}-${endIdx}`} words={LearningWords} />
+            <Learn key={`learn-${startIdx}-${endIdx}`} words={learningWords} />
           )}
           {activeTab === "2" && (
-            <Review key={`review-${startIdx}-${endIdx}`} words={nonRemembered} setWords={setNonRemembered} remember={rememberedWords} setRememberedWords={setRememberedWords} />
+            <Review 
+              key={`review-${startIdx}-${endIdx}`} 
+              words={nonRemembered} 
+              setWords={setNonRemembered} 
+              remember={rememberedWords} 
+              setRememberedWords={setRememberedWords} 
+            />
           )}
         </div>
       </div>
