@@ -25,7 +25,9 @@ function shuffleArray(arr) {
   return newArr;
 }
 
-export default function Review({ words = [] }) {
+export default function Review({ words = [], setWords, remember = [], setRememberedWords }) {
+  const correctSoundRef = useRef(null);
+  const wrongSoundRef = useRef(null);
   const [order, setOrder] = useState([]);
   const [directionList, setDirectionList] = useState([]);
   const [qIndex, setQIndex] = useState(0);
@@ -39,25 +41,37 @@ export default function Review({ words = [] }) {
   const [correctAnswerText, setCorrectAnswerText] = useState("");
   const [sendWord, setSendWord] = useState("");
   const autoNextTimeoutRef = useRef(null);
-  const total = words.length;
-
-  // --- TRẠNG THÁI TRỐNG (EMPTY STATE CỦA THEME TỐI) ---
-  if (!words || words.length === 0) {
-    return (
-      <div style={S.root}>
-        <div style={S.shell}>
-          <div style={{ textAlign: "center", color: "#8f8fad", padding: "32px 0" }}>
-            <span style={{ fontSize: "2.5rem" }}>✨</span>
-            <p style={{ marginTop: "16px", fontSize: "1.1rem", fontWeight: 700, color: "#fff" }}>Sẵn sàng học tập!</p>
-            <p style={{ fontSize: "0.85rem", color: "#5a5a8a", marginTop: "4px" }}>Vui lòng thêm danh sách từ vựng để bắt đầu thử thách.</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const total = words ? words.length : 0;
   useEffect(() => {
+    correctSoundRef.current = new Audio("/Vocabulary/sounds/ding.wav");
+    wrongSoundRef.current = new Audio("/Vocabulary/sounds/buzz.wav");
+    correctSoundRef.current.load();
+    wrongSoundRef.current.load();
+  }, []);
+
+  /* ── TTS SỬA ĐỔI: Thêm tham số clearQueue để kiểm soát âm thanh ── */
+  /* ── TTS PROMISE: Đợi đọc xong mới chạy tiếp ── */
+  const speak = (text, lang = "en-US", clearQueue = true) => {
+    return new Promise((resolve) => {
+      if (!window.speechSynthesis || !text) {
+        resolve();
+        return;
+      }      
+      if (clearQueue) {
+        window.speechSynthesis.cancel();
+      }      
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = lang; 
+      u.rate = 0.9;
+      u.onend = () => resolve();
+      u.onerror = () => resolve();
+      window.speechSynthesis.speak(u);
+    });
+  };
+
+  // Khởi tạo trật tự câu hỏi ban đầu
+  useEffect(() => {
+    if (!words || words.length === 0) return;
     setOrder(makeShuffledOrder(words.length));
     setDirectionList(makeDirectionList(words.length));
     setQIndex(0);
@@ -68,11 +82,13 @@ export default function Review({ words = [] }) {
   const dir = directionList[qIndex] || "en2vi";
   const hintText = dir === "en2vi" ? "Từ này có nghĩa tiếng Việt là gì?" : "Từ tiếng Anh tương ứng là gì?";
 
-  // eslint-disable-next-line react-hooks/rules-of-hooks
+  // Xử lý logic tạo câu hỏi và PHÁT ÂM CÂU HỎI
   useEffect(() => {
-    if (order[qIndex] === undefined || !directionList[qIndex]) return;
+    if (!words || words.length === 0 || order[qIndex] === undefined || !directionList[qIndex]) return;
 
     const correctWord = words[currentWordIndex];
+    if (!correctWord) return;
+
     let promptText = "";
     let correctAnswer = "";
     let wrongPoolRaw = [];
@@ -82,15 +98,17 @@ export default function Review({ words = [] }) {
       correctAnswer = correctWord.Meaning;
       wrongPoolRaw = words
         .map((w, i) => ({ txt: w.Meaning, i }))
-        .filter((w) => w.i !== currentWordIndex);
+        .filter((w) => w.i !== currentWordIndex);      
       setSendWord(promptText);
+      speak(correctWord.Word, "en-US", false);
     } else {
       promptText = correctWord.Meaning;
       correctAnswer = correctWord.Word;
       wrongPoolRaw = words
         .map((w, i) => ({ txt: w.Word, i }))
-        .filter((w) => w.i !== currentWordIndex);
-      setSendWord(promptText);
+        .filter((w) => w.i !== currentWordIndex);      
+      setSendWord(correctWord.Word);
+      speak(correctWord.Meaning, "vi-VN", false);
     }
 
     const wrongPool = shuffleArray(wrongPoolRaw)
@@ -116,9 +134,8 @@ export default function Review({ words = [] }) {
       clearTimeout(autoNextTimeoutRef.current);
       autoNextTimeoutRef.current = null;
     }
-  }, [qIndex, words, order, directionList, currentWordIndex, dir]);
+  }, [qIndex, order, directionList, currentWordIndex, dir]);
 
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     return () => {
       if (autoNextTimeoutRef.current) {
@@ -144,30 +161,54 @@ export default function Review({ words = [] }) {
     if (locked) return;
     const choice = options[choiceIdx];
     const correctNow = !!choice.correct;
-    if (correctNow === true) {
-      submitData(sendWord, 1);
-    } else {
-      submitData(sendWord, 0);
-    }
+    
+    submitData(sendWord, correctNow ? 1 : 0);
+    
     setPicked(choiceIdx);
     setLocked(true);
     setIsCorrect(correctNow);
+    
     if (correctNow) {
+      correctSoundRef.current.play();
       setScore((s) => s + 1);
+      // Nâng cao UX: Chọn ĐÚNG thì đọc lại từ tiếng Anh đó để ghi nhớ sâu
+      const currentWord = words[currentWordIndex];
+      setWords((prevWords) => {
+        return prevWords.filter(
+          (w) => w.Word !== currentWord.Word
+        );
+      });
+      setRememberedWords((prev) => {
+        return [...prev, currentWord];
+      });
+      // setWords((prevWords) => {
+      //   const updatedWords = [...prevWords];
+      //   const wordToUpdate = updatedWords.find(w => w.Word === currentWord.Word);
+      //   if (wordToUpdate) {
+      //     wordToUpdate.Status = "1";
+      //   }        
+      //   return updatedWords;
+      // });
+      //if (currentWord) speak(currentWord.Word, "en-US", true);
+    } else {
+      // Chọn SAI: Đọc từ đúng để nhắc nhở
+      wrongSoundRef.current.play();
+      const currentWord = words[currentWordIndex];
+      //if (currentWord) speak(`Đáp án đúng phải là: ${currentWord.Word}`, "en-US", true);
     }
+
     autoNextTimeoutRef.current = setTimeout(() => {
       goNextQuestion();
-    }, 1500); 
+    }, 2000); // Tăng lên 2s để người dùng kịp nghe phát âm đáp án
   };
+
   const submitData = async (Words, status) => {
     try {
-      const response = await fetch(
+      await fetch(
         "https://script.google.com/macros/s/AKfycbzBCRTzrGnN8-oGB1iF9a78F3r1AsPloNPGd_qipcx2qYkZQzB6j9batyMyAfTEpYEf/exec",
         {
           method: "POST",
-          headers: {
-            "Content-Type": "text/plain", 
-          },
+          headers: { "Content-Type": "text/plain" },
           body: JSON.stringify({
             action: "updateStatus",
             Words: Words,
@@ -175,14 +216,25 @@ export default function Review({ words = [] }) {
           }),
         }
       );
-      await response.json();
     } catch (error) {
       console.error("Lỗi khi gửi dữ liệu:", error);
     }
   };
 
-// Ví dụ cách bạn gọi hàm:
-// submitData("Book", 1); // Sẽ tìm chữ Book ở dòng 2 và điền số 1 vào cột D
+  // ── ĐỂ ĐOẠN ĐIỀU KIỆN RỖNG XUỐNG ĐÂY (SAU KHI ĐÃ KHAI BÁO HẾT HOOKS) ──
+  if (!words || words.length === 0) {
+    return (
+      <div style={S.root}>
+        <div style={S.shell}>
+          <div style={{ textAlign: "center", color: "#8f8fad", padding: "32px 0" }}>
+            <span style={{ fontSize: "2.5rem" }}>✨</span>
+            <p style={{ marginTop: "16px", fontSize: "1.1rem", fontWeight: 700, color: "#fff" }}>Sẵn sàng học tập!</p>
+            <p style={{ fontSize: "0.85rem", color: "#5a5a8a", marginTop: "4px" }}>Vui lòng thêm danh sách từ vựng để bắt đầu thử thách.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const progressPercent = total > 0 ? ((qIndex + 1) / total) * 100 : 0;
 
@@ -210,7 +262,7 @@ export default function Review({ words = [] }) {
           </div>
         </div>
 
-        {/* ── KHUNG TỪ VỰNG CÂU HỎI (CO GIÃN THEO KHÔNG GIAN DỌC) ── */}
+        {/* ── KHUNG TỦ VỰC CÂU HỎI ── */}
         <div style={S.wordBox}>
           <div style={S.faceLang}>{dir === "en2vi" ? "EN" : "VI"}</div>
           <div style={S.enWord}>{questionPrompt}</div>
@@ -262,7 +314,6 @@ export default function Review({ words = [] }) {
   );
 }
 
-/* ──────────────── TRỤC SVG ICONS ĐỒNG BỘ ──────────────── */
 const EditIcon = () => (
   <svg width={14} height={14} viewBox="0 0 24 24" fill="none"
     stroke="#748ffc" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -270,7 +321,6 @@ const EditIcon = () => (
   </svg>
 );
 
-/* ──────────────── DESIGN SYSTEM PHÂN PHỐI TỶ LỆ DỌC ──────────────── */
 const S = {
   root: {
     width: "100%",
@@ -333,12 +383,10 @@ const S = {
   },
   progressFill: {
     height: "100%",
-    backgroundColor: "#34d399", // Giữ màu xanh lá Duolingo tạo động lực tích cực
+    backgroundColor: "#34d399",
     borderRadius: 99,
     transition: "width 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
   },
-  
-  /* CÂU HỎI CO GIÃN LINH HOẠT THEO CHIỀU CAO THỰC TẾ */
   wordBox: {
     position: "relative",
     borderRadius: 16,
@@ -380,12 +428,10 @@ const S = {
     fontWeight: 500,
     color: "#5a5a8a",
   },
-  
-  /* KHU VỰC ĐÁP ÁN (FIX SỐ LƯỢNG 4 NÚT - CHẶN CO COp ĐÈ LÊN NHAU) */
   optionsWrap: {
     display: "grid",
-    gridTemplateColumns: "1fr",
-    gap: "6px",
+    gridTemplateColumns: "1fr 1fr",
+    gap: "16px",
     marginBottom: 8,
     flexShrink: 0,
   },
@@ -402,7 +448,7 @@ const S = {
         border: `1px solid ${border}`,
         backgroundColor: bg,
         padding: "11px 16px", 
-        fontSize: "0.9rem",
+        fontSize: "1.5rem",
         fontWeight: 600,
         color: textColor,
         cursor: "pointer",
@@ -438,7 +484,7 @@ const S = {
       border: `1px solid ${border}`,
       backgroundColor: bg,
       padding: "11px 16px",
-      fontSize: "0.9rem",
+      fontSize: "1.5rem",
       fontWeight: 600,
       color: textColor,
       cursor: "default",
@@ -448,8 +494,6 @@ const S = {
       WebkitTapHighlightColor: "transparent",
     };
   },
-
-  /* THANH THÔNG BÁO */
   feedbackBox: (locked, isCorrect) => {
     if (!locked) return { height: "38px", marginBottom: "8px", flexShrink: 0 };
     return {

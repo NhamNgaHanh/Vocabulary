@@ -128,7 +128,7 @@ export default function Learn({ words = [] }) {
     if (!window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = lang; u.rate = 0.9;
+    u.lang = lang; u.rate = 0.8;
     window.speechSynthesis.speak(u);
   };
 
@@ -205,19 +205,22 @@ export default function Learn({ words = [] }) {
   };
 
   /* ── Swipe handlers ── */
-  const goNext = () => {
+  const changeWord = (step) => {
     if (isPlaying) return;
-    setDirection(1);
-    setIndex((p) => (p + 1 >= visibleWords.length ? 0 : p + 1));
+
+    const newIndex =
+      (index + step + visibleWords.length) %
+      visibleWords.length;
+
+    setDirection(step);
+    setIndex(newIndex);
     setIsFlipped(false);
+
+    speak(visibleWords[newIndex]?.Word, "en-US");
   };
 
-  const goPrev = () => {
-    if (isPlaying) return;
-    setDirection(-1);
-    setIndex((p) => (p - 1 < 0 ? visibleWords.length - 1 : p - 1));
-    setIsFlipped(false);
-  };
+  const goNext = () => changeWord(1);
+  const goPrev = () => changeWord(-1);
 
   useEffect(() => { return clearAll; }, []);
 
@@ -249,26 +252,6 @@ export default function Learn({ words = [] }) {
         </div>
 
         {/* RANGE SLIDERS */}
-        <div style={S.panel}>
-          <div style={S.panelHeader}>
-            <span style={S.panelLabel}>Phạm vi từ muốn học</span>
-            <span style={S.panelBadge}>
-              {startIdx}–{endIdx} · {visibleWords.length} từ
-            </span>
-          </div>
-          <SliderRow
-            label="Từ từ:"
-            min={1} max={endIdx} value={startIdx}
-            disabled={isPlaying}
-            onChange={(v) => { setRangeStart(v); setIndex(0); setIsFlipped(false); }}
-          />
-          <SliderRow
-            label="Đến từ:"
-            min={startIdx} max={totalWords} value={endIdx}
-            disabled={isPlaying}
-            onChange={(v) => { setRangeEnd(v); setIndex(0); setIsFlipped(false); }}
-          />
-        </div>
 
         {/* PROGRESS */}
         <div style={S.progressRow}>
@@ -313,13 +296,20 @@ export default function Learn({ words = [] }) {
                 // Swipe RIGHT -> Kéo qua phải tức là xem từ trước đó
                 else if (x > 100 || velocity > 400) {
                   goPrev();
-                } else if (Math.abs(x) < 20) {
-                  setIsFlipped((f) => !f);
-                } 
+                }
+                // } else if (Math.abs(x) < 20) {
+                //   setIsFlipped((f) => !f);
+                // } 
               }}
               onClick={() => {
                 if (isPlaying) return;
-                setIsFlipped((f) => !f);
+                const nextFlipped = !isFlipped;
+                setIsFlipped(nextFlipped);
+                if (nextFlipped) {
+                  speak(currentWord.Meaning, "vi-VN");
+                } else {
+                  speak(currentWord.Word, "en-US");
+                }
               }}
             >
               {/* 3-D flip inner */}
@@ -377,42 +367,108 @@ export default function Learn({ words = [] }) {
         )}
 
         {/* SPEAK ROW */}
-        <div style={S.row}>
-          <SpeakButton
-            color={C.purple} bg={C.purpleDim}
-            disabled={isPlaying}
-            label="Phát âm EN"
-            onClick={() => speak(currentWord.Word, "en-US")}
-          />
-          <SpeakButton
-            color={C.green} bg={C.greenDim}
-            disabled={isPlaying}
-            label="Đọc nghĩa VI"
-            onClick={() => speak(currentWord.Meaning, "vi-VN")}
-          />
-        </div>
-
-        {/* PLAY / PAUSE / STOP */}
-        <div style={S.row}>
-          {!isPlaying ? (
-            <PrimaryButton onClick={startPlay} icon={<PlayIcon />} label="Phát tự động" />
-          ) : isPaused ? (
-            <PrimaryButton onClick={resumePlay} icon={<PlayIcon />} label="Tiếp tục" />
-          ) : (
-            <PrimaryButton
-              onClick={pausePlay}
-              icon={<PauseIcon />}
-              label="Tạm dừng"
-              style={{ background: "#1e1e3a", border: `1px solid ${C.borderAccent}` }}
-            />
+        {/* ─── THANH ĐIỀU KHIỂN ÂM THANH KHÔNG GIAN COMPACT (Gộp về 1 dòng) ─── */}
+        <div style={{
+          display: "flex",
+          gap: 8,
+          padding: "0 16px 12px",
+          width: "100%",
+          boxSizing: "border-box",
+          flexShrink: 0
+        }}>
+          
+          {/* 1. Nút phát âm tiếng Anh (Tự động ẩn khi đang chạy Auto-play để tránh chật màn hình) */}
+          {!isPlaying && (
+            <button
+              disabled={isPlaying}
+              onClick={() => speak(currentWord.Word, "en-US")}
+              style={{
+                flex: 1,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+                background: "rgba(76, 110, 245, 0.1)",
+                border: "1px solid rgba(76, 110, 245, 0.2)",
+                color: "#748ffc",
+                borderRadius: 12, padding: "12px 8px", fontSize: 12, fontWeight: 600,
+                cursor: "pointer", transition: "all 0.2s"
+              }}
+            >
+              🔊 EN
+            </button>
           )}
-        </div>
 
-        {isPlaying && (
-          <button style={S.stopBtn} onClick={stopPlay}>
-            <StopIcon /> Dừng lại
-          </button>
-        )}
+          {/* 2. CỤM TRUNG TÂM: Xử lý trạng thái thông minh */}
+          {!isPlaying ? (
+            // TRẠNG THÁI GỐC: Nút Phát tự động chiếm vị trí trung tâm nổi bật
+            <button
+              onClick={startPlay}
+              style={{
+                flex: 2,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                background: "#4c6ef5",
+                border: "none", color: "#fff",
+                borderRadius: 12, padding: "12px 16px", fontSize: 13, fontWeight: 700,
+                cursor: "pointer", boxShadow: "0 4px 12px rgba(76, 110, 245, 0.3)"
+              }}
+            >
+              <PlayIcon /> Phát tự động
+            </button>
+          ) : (
+            // TRẠNG THÁI ĐANG PHÁT: Chia đôi dòng thành 2 nút điều hướng media chuyên nghiệp
+            <>
+              {/* Nút Tạm dừng / Tiếp tục */}
+              <button
+                onClick={isPaused ? resumePlay : pausePlay}
+                style={{
+                  flex: 1,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  background: isPaused ? "#4c6ef5" : "#1e1e38",
+                  border: isPaused ? "none" : "1px solid #2e2e5e",
+                  color: "#fff",
+                  borderRadius: 12, padding: "12px 8px", fontSize: 12, fontWeight: 600,
+                  cursor: "pointer"
+                }}
+              >
+                {isPaused ? <PlayIcon /> : <PauseIcon />} {isPaused ? "Tiếp tục" : "Tạm dừng"}
+              </button>
+
+              {/* Nút Dừng hẳn */}
+              <button
+                onClick={stopPlay}
+                style={{
+                  flex: 1,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  background: "rgba(239, 68, 68, 0.12)",
+                  border: "1px solid rgba(239, 68, 68, 0.25)",
+                  color: "#ef4444",
+                  borderRadius: 12, padding: "12px 8px", fontSize: 12, fontWeight: 600,
+                  cursor: "pointer"
+                }}
+              >
+                <StopIcon /> Dừng lại
+              </button>
+            </>
+          )}
+
+          {/* 3. Nút đọc nghĩa tiếng Việt (Tự động ẩn khi đang chạy Auto-play) */}
+          {!isPlaying && (
+            <button
+              disabled={isPlaying}
+              onClick={() => speak(currentWord.Meaning, "vi-VN")}
+              style={{
+                flex: 1,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+                background: "rgba(52, 211, 153, 0.08)",
+                border: "1px solid rgba(52, 211, 153, 0.2)",
+                color: "#34d399",
+                borderRadius: 12, padding: "12px 8px", fontSize: 12, fontWeight: 600,
+                cursor: "pointer", transition: "all 0.2s"
+              }}
+            >
+              🔊 VI
+            </button>
+          )}
+
+        </div>
 
         {/* TIP */}
         {!isPlaying && (
@@ -445,26 +501,6 @@ function StatusPill({ isPlaying, isPaused }) {
       letterSpacing: "0.03em",
     }}>
       {p.label}
-    </div>
-  );
-}
-
-function SliderRow({ label, min, max, value, disabled, onChange }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5 }}>
-      <span style={{ fontSize: 11, color: C.textMuted, width: 44, flexShrink: 0 }}>{label}</span>
-      <input
-        type="range" min={min} max={max} value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(Number(e.target.value))}
-        style={{
-          flex: 1, height: 4, accentColor: "#4c6ef5",
-          cursor: disabled ? "not-allowed" : "pointer",
-        }}
-      />
-      <span style={{ fontSize: 11, fontWeight: 700, color: C.textPrimary, width: 20, textAlign: "right", flexShrink: 0 }}>
-        {value}
-      </span>
     </div>
   );
 }
