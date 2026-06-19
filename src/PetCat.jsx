@@ -1,120 +1,75 @@
 /**
  * PetCat.jsx
  * ------------------------------------------------------------------
- * A cute, pastel, Japanese-mascot-style desktop companion for an
- * English vocabulary app. Fixed to the bottom-right corner, always
- * above the learning content, never blocking it.
+ * A simple desktop pet: idle until clicked, then walks smoothly to
+ * wherever the user clicked and waits there.
  *
- * - Visuals: swaps between five GIF sprites based on the current
- *   state (idle / walk / sit / sleep / jump).
+ * - Visuals: idle.gif while STATES.IDLE, walk.gif while STATES.WALKING.
+ *   Facing direction is a CSS transform (mirror), not a sprite swap.
  * - Behavior: delegated entirely to `usePetEngine` (PetEngine.js) +
- *   the pure logic in PetStateMachine.js — this file just renders.
- * - Learning hooks: parent components call methods on a ref to make
- *   the cat react to lesson events:
+ *   the pure helpers in PetStateMachine.js — this file just renders.
+ * - Movement: the parent app forwards clicks anywhere on the page into
+ *   `moveTo(x, y)`, exposed here via the ref:
  *
  *     const petRef = useRef(null);
- *     <PetCat ref={petRef} />
- *     ...
- *     petRef.current.onCorrectAnswer();   // cat jumps + hearts
- *     petRef.current.onLessonComplete();  // cat double-jumps + "Great Job! 🎉"
+ *     <div onClick={(e) => petRef.current?.moveTo(e.clientX, e.clientY)}>
+ *       <PetCat ref={petRef} />
+ *       ...rest of the app...
+ *     </div>
  * ------------------------------------------------------------------
  */
 import { memo, forwardRef, useImperativeHandle, useState } from 'react';
 import { motion } from 'framer-motion';
 import { usePetEngine } from './PetEngine';
-import { STATES, JUMP_DURATION } from './PetStateMachine';
-import SpeechBubble from './SpeechBubble';
-import HeartParticle from './HeartParticle';
+import { STATES } from './PetStateMachine';
 import styles from './PetCat.module.css';
 import idleGif from './assets/cat/idle.gif';
 import walkGif from './assets/cat/walk.gif';
-import sitGif from './assets/cat/sit.gif';
-import sleepGif from './assets/cat/sleep.gif';
-import jumpGif from './assets/cat/jump.gif';
-
 
 const SPRITES = {
   [STATES.IDLE]: idleGif,
   [STATES.WALKING]: walkGif,
-  [STATES.SITTING]: sitGif,
-  [STATES.SLEEPING]: sleepGif,
-  [STATES.JUMPING]: jumpGif,
+  // No eat.gif asset shipped yet, so EATING just reuses the idle sprite —
+  // satisfies "stay idle-looking if no eat animation exists" with zero
+  // risk of a missing-file build error. Once a real asset exists, add
+  // `import eatGif from './assets/cat/eat.gif';` above and swap it in here.
+  [STATES.EATING]: idleGif,
 };
 
-// Shown instead of the GIF if the asset fails to load (e.g. the file
-// doesn't exist yet at /assets/cat/*.gif) — so the pet is never invisible.
+// Shown instead of the GIF if the asset fails to load — so the pet is
+// never invisible.
 const FALLBACK_EMOJI = {
   [STATES.IDLE]: '🐱',
   [STATES.WALKING]: '🐈',
-  [STATES.SITTING]: '🐈‍⬛',
-  [STATES.SLEEPING]: '😴',
-  [STATES.JUMPING]: '🙀',
+  [STATES.EATING]: '🐱',
 };
 
 const PetCat = forwardRef(function PetCat(_props, ref) {
-  const engine = usePetEngine();
-  const {
-    petState,
-    facing,
-    pos,
-    bubbleText,
-    hearts,
-    handlePositionAnimComplete,
-    handleClick,
-    handlePointerDown,
-    handlePointerUp,
-    triggerJumpImmediate,
-    celebrateCorrectAnswer,
-    celebrateLessonComplete,
-    walkDurationSec,
-  } = engine;
+  const { petState, facing, pos, moveTo, walkDurationSec, handlePositionAnimComplete } = usePetEngine();
 
-  // Track sprite load failures per-state so we only fall back the ones
-  // that actually 404, and recover automatically once a real file exists.
-  const [spriteFailed, setSpriteFailed] = useState({});
+  // Track sprite load failures so we fall back to an emoji if the gif 404s.
+  const [spriteFailed, setSpriteFailed] = useState(false);
 
-  useImperativeHandle(
-    ref,
-    () => ({
-      onCorrectAnswer: celebrateCorrectAnswer,
-      onLessonComplete: celebrateLessonComplete,
-    }),
-    [celebrateCorrectAnswer, celebrateLessonComplete]
-  );
+  useImperativeHandle(ref, () => ({ moveTo }), [moveTo]);
 
-  const isJumping = petState === STATES.JUMPING;
-  const transition = isJumping
-    ? {
-        left: { duration: JUMP_DURATION / 1000, ease: 'easeOut' },
-        top: { duration: JUMP_DURATION / 1000, ease: 'easeOut' },
-        y: { duration: JUMP_DURATION / 1000, times: [0, 0.5, 1], ease: ['easeOut', 'easeIn'] },
-      }
-    : { left: { duration: walkDurationSec(), ease: 'easeInOut' }, top: { duration: walkDurationSec(), ease: 'easeInOut' } };
-
-  const showFallback = spriteFailed[petState];
+  const transition = {
+    left: { duration: walkDurationSec(), ease: 'easeInOut' },
+    top: { duration: walkDurationSec(), ease: 'easeInOut' },
+  };
 
   return (
     <div className={styles.stage} aria-hidden="false">
       <motion.div
         className={styles.petContainer}
-        animate={{ left: pos.x, top: pos.y, y: isJumping ? [0, -42, 0] : 0 }}
+        animate={{ left: pos.x, top: pos.y }}
         transition={transition}
         onAnimationComplete={handlePositionAnimComplete}
-        onClick={handleClick}
-        onDoubleClick={triggerJumpImmediate}
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerUp}
-        role="button"
-        aria-label="Pet cat companion. Click to pet, double-click to make it jump, press and hold to put it to sleep."
-        tabIndex={0}
+        role="img"
+        aria-label="Pet cat companion"
       >
-        <SpeechBubble text={bubbleText} />
-        <HeartParticle hearts={hearts} />
-
         <div className={styles.shadow} />
 
-        {showFallback ? (
+        {spriteFailed ? (
           <div
             className={`${styles.spriteFallback} ${facing === 'left' ? styles.faceLeft : ''}`}
             aria-hidden="true"
@@ -122,32 +77,13 @@ const PetCat = forwardRef(function PetCat(_props, ref) {
             {FALLBACK_EMOJI[petState]}
           </div>
         ) : (
-          <motion.img
-            key={petState}
+          <img
             src={SPRITES[petState]}
             alt=""
             className={`${styles.sprite} ${facing === 'left' ? styles.faceLeft : ''}`}
-            animate={petState === STATES.IDLE ? { y: [0, -3, 0] } : { y: 0 }}
-            transition={
-              petState === STATES.IDLE
-                ? { duration: 2.6, repeat: Infinity, ease: 'easeInOut' }
-                : { duration: 0.2 }
-            }
             draggable={false}
-            onError={() => setSpriteFailed((s) => ({ ...s, [petState]: true }))}
+            onError={() => setSpriteFailed(true)}
           />
-        )}
-
-        {petState === STATES.SLEEPING && (
-          <motion.div
-            className={styles.zzz}
-            initial={{ opacity: 0, y: 0 }}
-            animate={{ opacity: [0, 1, 0], y: -18 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-          >
-            Zzz
-          </motion.div>
         )}
       </motion.div>
     </div>

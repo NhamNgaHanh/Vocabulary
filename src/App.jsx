@@ -656,7 +656,7 @@ function SliderRow({ label, min, max, value, disabled, onChange }) {
 // ─────────────────────────────────────────────────────────────────────────
 function App() {
   useEffect(() => { injectStyles(); }, []);
-
+  
   const [activeTab, setActiveTab] = useState("1");
   const [totalWords, setTotalWords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -671,6 +671,7 @@ function App() {
   const [rangeStart, setRangeStart] = useState(1);
   const [rangeEnd, setRangeEnd] = useState(1);
 
+  const petRef = useRef(null);
   const showToast = (type, message) => {
     setToast({ show: true, type, message });
     setTimeout(() => setToast(t => ({ ...t, show: false })), 3000);
@@ -768,7 +769,7 @@ function App() {
         <div style={styles.loadingText}>Đang đồng bộ dữ liệu từ bộ nhớ...</div>
       </div>
     ) : (
-      <div style={styles.app}>
+      <div style={styles.app} onClick={(e) => petRef.current?.moveTo(e.clientX, e.clientY)}>
         <div style={styles.blobTop} />
         <div style={styles.blobBottom} />
 
@@ -777,7 +778,7 @@ function App() {
             {toast.message}
           </div>
         )}
-        <PetCat />
+        <PetCat ref={petRef} />
         {/* Header Khu Vực */}
         <div style={styles.bottomNav}>
           {/* <div style={styles.logoArea}>

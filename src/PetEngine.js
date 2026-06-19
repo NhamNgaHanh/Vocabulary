@@ -1,276 +1,178 @@
 /**
  * PetEngine.js
  * ------------------------------------------------------------------
- * The "brain" of the pet: a single custom hook that owns all timers,
- * state transitions, and exposes a small imperative API for outside
- * events (correct answer, lesson complete, click/long-press/etc).
+ * The "brain" of the pet. Two visible states (IDLE / WALKING), plus a
+ * brief EATING beat used only by the AUTO_EAT_TEXT behavior below.
  *
- * PetCat.jsx is intentionally "dumb" — it just reads what this hook
- * returns and renders the right sprite + motion props. All random()
- * calls happen inside callbacks/effects here, never during render.
+ * AUTO_EAT_TEXT:
+ * If the pet sits IDLE for AUTO_EAT_IDLE_DELAY (5s), it looks for the
+ * nearest `.vocab-word` element on screen and walks to it using the
+ * exact same `moveTo()` path a user click would take. On arrival it
+ * pauses, "eats" (EATING state — PetCat.jsx renders eat.gif or just
+ * stays idle-looking if that asset doesn't exist), then reports the
+ * word as eaten via `onEatWord(id)` and/or a `pet-eat-word` event, and
+ * returns to IDLE. The 5s timer restarts any time the pet becomes IDLE
+ * again (after walking or eating). A real user click at any point —
+ * including mid-auto-walk — cancels the auto-eat sequence and takes
+ * priority, since it goes through the same `moveTo()` call.
+ *
+ * PetCat.jsx stays "dumb" — it just reads what this hook returns and
+ * renders idle.gif / walk.gif / eat.gif accordingly.
  * ------------------------------------------------------------------
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   STATES,
   WALK_SPEED,
-  IDLE_DURATION,
-  SIT_DURATION,
-  SLEEP_DURATION,
-  JUMP_DURATION,
-  BLINK_INTERVAL,
-  LONG_PRESS_MS,
-  BUBBLE_DURATION,
-  HEART_LIFETIME,
-  rand,
-  randId,
+  AUTO_EAT_IDLE_DELAY,
+  EAT_PAUSE_MS,
+  EAT_DURATION_MS,
   computeBounds,
   defaultStartPos,
-  pickWalkTarget,
-  pickNextActivity,
+  clampPoint,
+  getDistance,
+  getDirection,
+  travelDurationSec,
 } from './PetStateMachine';
 
-export function usePetEngine() {
+/** Finds the `.vocab-word` element whose center is closest to `from`. */
+function findNearestVocabWord(from) {
+  if (typeof document === 'undefined') return null;
+  const candidates = document.querySelectorAll('.vocab-word');
+  let nearest = null;
+  let nearestDist = Infinity;
+  candidates.forEach((el) => {
+    const rect = el.getBoundingClientRect();
+    const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    const dist = getDistance(from, center);
+    if (dist < nearestDist) {
+      nearestDist = dist;
+      nearest = { id: el.dataset.id ?? el.id ?? null, center };
+    }
+  });
+  return nearest;
+}
+
+export function usePetEngine(onEatWord) {
   const [petState, setPetState] = useState(STATES.IDLE);
   const [facing, setFacing] = useState('right');
   const boundsRef = useRef(computeBounds());
-  const [pos, setPos] = useState(() => defaultStartPos(boundsRef.current)); // {x, y} in viewport px
-  const [walkPhase, setWalkPhase] = useState(null); // 'walking' | null (no "return home" anymore — it's a real destination)
-  const [blinking, setBlinking] = useState(false);
-  const [bubbleText, setBubbleText] = useState(null);
-  const [hearts, setHearts] = useState([]);
+  const [pos, setPos] = useState(() => defaultStartPos(boundsRef.current));
 
-  // Refs for things that must not trigger re-renders, and for guarding
-  // against stale timers/animation callbacks after an interruption.
-  const mountedRef = useRef(true);
-  const timersRef = useRef([]);
-  const tokenRef = useRef(0);
-  const posRef = useRef(pos); // mirrors `pos` synchronously, for distance calcs mid-walk
+  // Mirrors `pos` synchronously so a mid-walk click can compute distance
+  // from wherever the pet visually is right now, without waiting on React
+  // state to flush.
+  const posRef = useRef(pos);
   const walkDistanceRef = useRef(0);
-  const longPressTimerRef = useRef(null);
-  const longPressFiredRef = useRef(false);
-  const bubbleTimerRef = useRef(null);
 
+  // Latest `onEatWord` without forcing moveTo/handlePositionAnimComplete
+  // to change identity every render.
+  const onEatWordRef = useRef(onEatWord);
   useEffect(() => {
-    posRef.current = pos;
-  }, [pos]);
+    onEatWordRef.current = onEatWord;
+  }, [onEatWord]);
 
-  const addTimer = useCallback((fn, ms) => {
+  // AUTO_EAT_TEXT bookkeeping: which word (if any) the pet is currently
+  // walking toward to eat, and the timers driving the post-arrival pause
+  // + eat beat. Kept separate from the 5s idle-trigger timer.
+  const pendingEatRef = useRef(null); // { id } | null
+  const idleTimerRef = useRef(null);
+  const eatTimersRef = useRef([]);
+
+  const addEatTimer = useCallback((fn, ms) => {
     const id = setTimeout(fn, ms);
-    timersRef.current.push(id);
+    eatTimersRef.current.push(id);
     return id;
   }, []);
 
-  const clearTimers = useCallback(() => {
-    timersRef.current.forEach(clearTimeout);
-    timersRef.current = [];
+  const clearEatTimers = useCallback(() => {
+    eatTimersRef.current.forEach(clearTimeout);
+    eatTimersRef.current = [];
   }, []);
 
-  /* ---------------- finite state machine ---------------- */
+  const clearIdleTimer = useCallback(() => {
+    clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = null;
+  }, []);
 
-  // `runNext` (declared below) needs to be called once the idle timer
-  // elapses, but `enterIdle` must exist first so the other transitions can
-  // depend on it. Routing through a ref breaks that circular dependency
-  // without ever giving `enterIdle` an unstable identity.
-  const runNextRef = useRef(() => {});
+  /**
+   * moveTo(x, y, eatTarget) — call with raw event coordinates (e.g.
+   * event.clientX/Y). Clamps into bounds, faces the destination, and
+   * starts walking there — identical for a user click and an auto-eat
+   * walk. `eatTarget` (internal use) is `{ id }` for an auto-eat walk,
+   * or omitted/null for a normal click — and a normal click always
+   * overwrites/cancels any auto-eat walk in progress.
+   */
+  const moveTo = useCallback(
+    (rawX, rawY, eatTarget = null) => {
+      clearIdleTimer();
+      clearEatTimers();
+      pendingEatRef.current = eatTarget;
 
-  const enterIdle = useCallback(() => {
-    clearTimers();
-    setWalkPhase(null);
-    setPetState(STATES.IDLE);
-    const myToken = ++tokenRef.current;
-    const duration = rand(IDLE_DURATION[0], IDLE_DURATION[1]);
-    addTimer(() => {
-      if (!mountedRef.current || tokenRef.current !== myToken) return;
-      runNextRef.current();
-    }, duration);
-  }, [addTimer, clearTimers]);
+      const bounds = boundsRef.current;
+      const target = clampPoint(rawX, rawY, bounds);
+      const from = posRef.current;
 
-  const startTimedState = useCallback(
-    (state, duration, onDone) => {
-      clearTimers();
-      setPetState(state);
-      const myToken = ++tokenRef.current;
-      addTimer(() => {
-        if (!mountedRef.current || tokenRef.current !== myToken) return;
-        (onDone || enterIdle)();
-      }, duration);
+      walkDistanceRef.current = getDistance(from, target);
+      setFacing(getDirection(from, target));
+      setPetState(STATES.WALKING);
+      setPos(target);
+      posRef.current = target;
     },
-    [addTimer, clearTimers, enterIdle]
+    [clearIdleTimer, clearEatTimers]
   );
 
-  const startWalk = useCallback(() => {
-    const target = pickWalkTarget(posRef.current, boundsRef.current);
-    if (!target) {
-      enterIdle();
-      return;
-    }
-    clearTimers();
-    ++tokenRef.current;
-    walkDistanceRef.current = target.distance;
-    setFacing(target.direction);
-    setPetState(STATES.WALKING);
-    setWalkPhase('walking');
-    setPos({ x: target.x, y: target.y });
-  }, [clearTimers, enterIdle]);
-
-  const runNext = useCallback(() => {
-    const next = pickNextActivity();
-    if (next === STATES.WALKING) startWalk();
-    else if (next === STATES.SITTING) startTimedState(STATES.SITTING, rand(SIT_DURATION[0], SIT_DURATION[1]));
-    else if (next === STATES.JUMPING) startTimedState(STATES.JUMPING, JUMP_DURATION);
-    else if (next === STATES.SLEEPING) startTimedState(STATES.SLEEPING, SLEEP_DURATION);
-    else enterIdle();
-  }, [startWalk, startTimedState, enterIdle]);
-
-  // Keep the ref pointed at the latest runNext closure (which captures
-  // the latest startWalk/startTimedState) without changing enterIdle's identity.
-  useEffect(() => {
-    runNextRef.current = runNext;
-  }, [runNext]);
-
-  /* ---------------- walk animation completion ---------------- */
-
+  /** Called by PetCat.jsx when the Framer Motion position animation finishes. */
   const handlePositionAnimComplete = useCallback(() => {
-    if (petState !== STATES.WALKING) return;
-    enterIdle();
-  }, [petState, enterIdle]);
-
-  /* ---------------- lifecycle ---------------- */
-
-  useEffect(() => {
-    mountedRef.current = true;
-    const onResize = () => {
-      boundsRef.current = computeBounds();
-      const b = boundsRef.current;
-      setPos((p) => ({
-        x: Math.min(Math.max(p.x, b.minX), b.maxX),
-        y: Math.min(Math.max(p.y, b.minY), b.maxY),
-      }));
-    };
-    window.addEventListener('resize', onResize);
-
-    // Let the pet "wake up" briefly before its first move.
-    const startTimer = setTimeout(() => enterIdle(), 1200);
-
-    return () => {
-      mountedRef.current = false;
-      window.removeEventListener('resize', onResize);
-      clearTimeout(startTimer);
-      clearTimers();
-      clearTimeout(longPressTimerRef.current);
-      clearTimeout(bubbleTimerRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Blink only while idle, on a randomized cadence.
-  useEffect(() => {
-    if (petState !== STATES.IDLE) return;
-    let blinkTimeout;
-    const scheduleBlink = () => {
-      blinkTimeout = setTimeout(() => {
-        setBlinking(true);
-        setTimeout(() => setBlinking(false), 160);
-        scheduleBlink();
-      }, rand(BLINK_INTERVAL[0], BLINK_INTERVAL[1]));
-    };
-    scheduleBlink();
-    return () => clearTimeout(blinkTimeout);
-  }, [petState]);
-
-  /* ---------------- shared interaction primitives ---------------- */
-
-  const showBubble = useCallback((text, duration = BUBBLE_DURATION) => {
-    setBubbleText(text);
-    clearTimeout(bubbleTimerRef.current);
-    bubbleTimerRef.current = setTimeout(() => setBubbleText(null), duration);
-  }, []);
-
-  const spawnHearts = useCallback((count = 3) => {
-    const batch = Array.from({ length: count }, () => ({ id: randId(), x: rand(-12, 12) }));
-    setHearts((curr) => [...curr, ...batch]);
-    batch.forEach((h) => {
-      setTimeout(() => {
-        setHearts((curr) => curr.filter((x) => x.id !== h.id));
-      }, HEART_LIFETIME);
-    });
-  }, []);
-
-  /* ---------------- user interactions ---------------- */
-
-  const handleClick = useCallback(() => {
-    if (longPressFiredRef.current) {
-      // This click is the tail end of a long-press; don't also pop a bubble.
-      longPressFiredRef.current = false;
+    const eatTarget = pendingEatRef.current;
+    if (!eatTarget) {
+      setPetState(STATES.IDLE);
       return;
     }
-    showBubble('Meow ❤️');
-    spawnHearts(3);
-  }, [showBubble, spawnHearts]);
+    pendingEatRef.current = null;
 
-  const triggerJump = useCallback(
-    (onDone) => {
-      setWalkPhase(null);
-      startTimedState(STATES.JUMPING, JUMP_DURATION, onDone);
-    },
-    [startTimedState]
-  );
+    // Arrived to eat: pause briefly, "eat", report it, then go IDLE.
+    addEatTimer(() => {
+      setPetState(STATES.EATING);
+      addEatTimer(() => {
+        if (eatTarget.id != null) {
+          onEatWordRef.current?.(eatTarget.id);
+          window.dispatchEvent(new CustomEvent('pet-eat-word', { detail: { id: eatTarget.id } }));
+        }
+        setPetState(STATES.IDLE);
+      }, EAT_DURATION_MS);
+    }, EAT_PAUSE_MS);
+  }, [addEatTimer]);
 
-  const triggerSleep = useCallback(() => {
-    setWalkPhase(null);
-    startTimedState(STATES.SLEEPING, SLEEP_DURATION);
-  }, [startTimedState]);
+  /* ---------------- AUTO_EAT_TEXT: 5s idle trigger ---------------- */
 
-  const handlePointerDown = useCallback(() => {
-    longPressFiredRef.current = false;
-    longPressTimerRef.current = setTimeout(() => {
-      longPressFiredRef.current = true;
-      triggerSleep();
-    }, LONG_PRESS_MS);
-  }, [triggerSleep]);
+  useEffect(() => {
+    if (petState !== STATES.IDLE) return undefined;
 
-  const handlePointerUp = useCallback(() => {
-    clearTimeout(longPressTimerRef.current);
-  }, []);
+    idleTimerRef.current = setTimeout(() => {
+      const nearest = findNearestVocabWord(posRef.current);
+      if (nearest && nearest.id != null) {
+        moveTo(nearest.center.x, nearest.center.y, { id: nearest.id });
+      }
+    }, AUTO_EAT_IDLE_DELAY);
 
-  /* ---------------- learning-flow API (imperative, called from outside) ---------------- */
+    return clearIdleTimer;
+  }, [petState, moveTo, clearIdleTimer]);
 
-  /** Call when the user answers a vocabulary question correctly. */
-  const celebrateCorrectAnswer = useCallback(() => {
-    spawnHearts(3);
-    triggerJump(() => enterIdle());
-  }, [spawnHearts, triggerJump, enterIdle]);
-
-  /** Call when the user finishes a whole lesson. */
-  const celebrateLessonComplete = useCallback(() => {
-    showBubble('Great Job! 🎉', 2400);
-    spawnHearts(5);
-    // Jump twice, back to back, then settle into idle.
-    triggerJump(() => {
-      triggerJump(() => enterIdle());
-    });
-  }, [showBubble, spawnHearts, triggerJump, enterIdle]);
+  // Belt-and-suspenders cleanup on unmount.
+  useEffect(() => {
+    return () => {
+      clearIdleTimer();
+      clearEatTimers();
+    };
+  }, [clearIdleTimer, clearEatTimers]);
 
   return {
-    // render state
     petState,
     facing,
-    pos, // {x, y} absolute viewport position
-    walkPhase,
-    blinking,
-    bubbleText,
-    hearts,
-    // derived helper
-    walkDurationSec: () => Math.max(0.35, walkDistanceRef.current / WALK_SPEED),
-    // event handlers for the DOM node
+    pos,
+    moveTo,
+    walkDurationSec: () => travelDurationSec(walkDistanceRef.current, WALK_SPEED),
     handlePositionAnimComplete,
-    handleClick,
-    handlePointerDown,
-    handlePointerUp,
-    triggerJumpImmediate: () => triggerJump(),
-    // imperative learning-flow API
-    celebrateCorrectAnswer,
-    celebrateLessonComplete,
   };
 }
