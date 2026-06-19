@@ -3,6 +3,7 @@ import axios from "axios";
 import dayjs from "dayjs";
 import Learn from "./Learn";
 import Review from "./Review";
+import PetCat from "./PetCat";
 
 // ─────────────────────────────────────────────────────────────────────────
 // THEME & STYLES (Hệ thống thiết kế Premium — Light / Glassmorphism 2026)
@@ -319,6 +320,8 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
+    margin: 10,
+    borderRadius: 20,
     padding: "10px 22px",
     paddingBottom: "calc(10px + env(safe-area-inset-bottom, 0px))",
     background: "rgba(255,255,255,0.85)",
@@ -774,7 +777,7 @@ function App() {
             {toast.message}
           </div>
         )}
-
+        <PetCat />
         {/* Header Khu Vực */}
         <div style={styles.bottomNav}>
           {/* <div style={styles.logoArea}>

@@ -1,0 +1,136 @@
+/* ------------------------------------------------------------------
+   PetCat.module.css
+   --------------------------------------------------------------------
+   Cute / pastel / Japanese-mascot aesthetic.
+   The pet is fixed to the bottom-right corner, sits above all app UI,
+   and never intercepts clicks/scrolls meant for the page beneath it.
+   ------------------------------------------------------------------ */
+
+.stage {
+  position: fixed;
+  inset: 0; /* full viewport — the cat can roam anywhere within it */
+  z-index: 999999; /* always above learning content */
+  pointer-events: none; /* the stage itself never blocks clicks */
+}
+
+.petContainer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 200px;
+  height: 200px;
+  pointer-events: auto; /* only the cat itself is interactive */
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+}
+
+.petContainer:focus-visible {
+  outline: 2px solid #ffb6c1;
+  outline-offset: 4px;
+  border-radius: 50%;
+}
+
+.sprite {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: auto;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.08));
+  pointer-events: none;
+}
+
+.sprite.faceLeft {
+  transform: translateX(-50%) scaleX(-1);
+}
+
+.spriteFallback {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 44px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.12));
+  pointer-events: none;
+}
+
+.spriteFallback.faceLeft {
+  transform: translateX(-50%) scaleX(-1);
+}
+
+.shadow {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 46px;
+  height: 10px;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.16) 0%, rgba(0, 0, 0, 0) 75%);
+  border-radius: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+/* ---------------- speech bubble ---------------- */
+
+.bubble {
+  position: absolute;
+  bottom: 78px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  background: #fff8f3;
+  color: #6b4a3f;
+  font: 600 12px/1.4 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  padding: 6px 12px;
+  border-radius: 14px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+}
+
+.bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 10px;
+  background: #fff8f3;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+/* ---------------- heart particles ---------------- */
+
+.heart {
+  position: absolute;
+  bottom: 56px;
+  font-size: 14px;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.1));
+}
+
+/* ---------------- sleep indicator ---------------- */
+
+.zzz {
+  position: absolute;
+  top: -6px;
+  right: 6px;
+  font: 700 13px/1 'Comic Sans MS', 'Segoe UI', sans-serif;
+  color: #9fb4d9;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .petContainer,
+  .sprite,
+  .bubble,
+  .heart,
+  .zzz {
+    transition: none !important;
+    animation: none !important;
+  }
+}
