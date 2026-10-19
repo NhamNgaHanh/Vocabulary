@@ -13,7 +13,6 @@
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
-    "all": "^0.0.0",
     "framer-motion": "^12.40.0",
     "lucide-react": "^1.51.0",
     "react": "^19.2.6",
