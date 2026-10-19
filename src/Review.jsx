@@ -1,527 +1,389 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Volume2, RotateCw, Plus, Target, ArrowRight, Trophy, Dumbbell, BookOpen, PartyPopper } from "lucide-react";
+import { Button, Chip, ProgressBar } from "./components/ui";
+import { cx } from "./lib/cx";
+import { shuffle } from "./lib/random";
+import { speak, cancelSpeech } from "./lib/tts";
+import { playSound, preloadSounds } from "./lib/sound";
+import { Rating, previewIntervals, formatInterval, getCard } from "./lib/srs";
+import { recordReview } from "./hooks/useSrs";
 
-// --- CÁC HÀM BỔ TRỢ (GIỮ NGUYÊN LOGIC CHUẨN) ---
-function makeShuffledOrder(len) {
-  const arr = Array.from({ length: len }, (_, i) => i);
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
+const AUTO_NEXT_MS = 2600;
+const OPTION_COUNT = 4;
+const SLOW_MS = 10_000; // đúng nhưng nghĩ quá 10 giây → "Khó"
+const MAX_REPEATS = 3;
+
+const GRADES = [
+  { r: Rating.Hard, label: "Khó", key: "H", cls: "text-warn" },
+  { r: Rating.Good, label: "Tốt", key: "G", cls: "text-good" },
+  { r: Rating.Easy, label: "Dễ", key: "E", cls: "text-info" },
+];
+
+const randDir = () => (Math.random() < 0.5 ? "en2vi" : "vi2en");
+
+/** Câu hỏi trắc nghiệm; đáp án nhiễu lấy từ TOÀN BỘ bộ từ. */
+function buildQuestion({ word, dir }, pool) {
+  const field = dir === "en2vi" ? "Meaning" : "Word";
+  const answer = word[field];
+  const seen = new Set([answer.toLowerCase()]);
+  const wrong = [];
+  for (const w of shuffle(pool)) {
+    const t = w[field];
+    if (!t || seen.has(t.toLowerCase())) continue;
+    seen.add(t.toLowerCase());
+    wrong.push({ text: t, correct: false });
+    if (wrong.length === OPTION_COUNT - 1) break;
   }
-  return arr;
+  return {
+    word,
+    dir,
+    isNew: !getCard(word),
+    prompt: dir === "en2vi" ? word.Word : word.Meaning,
+    answer,
+    options: shuffle([{ text: answer, correct: true }, ...wrong]),
+  };
 }
 
-function makeDirectionList(len) {
-  return Array.from({ length: len }, () =>
-    Math.random() < 0.5 ? "en2vi" : "vi2en"
-  );
+function startSession(items, pool, practice) {
+  const queue = items.map((word) => ({ word, dir: randDir(), repeat: 0 }));
+  return {
+    practice,
+    queue,
+    qIndex: 0,
+    question: queue.length ? buildQuestion(queue[0], pool) : null,
+    picked: null,
+    grade: null,
+    preview: null,
+    counts: { [Rating.Again]: 0, [Rating.Hard]: 0, [Rating.Good]: 0, [Rating.Easy]: 0 },
+    relearn: 0,
+    finished: queue.length === 0,
+  };
 }
 
-function shuffleArray(arr) {
-  const newArr = [...arr];
-  for (let i = newArr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
-  }
-  return newArr;
-}
+/**
+ * Ôn tập theo FSRS.
+ * Phím tắt: 1–4 chọn đáp án · Enter/→ câu tiếp · H/G/E = Khó/Tốt/Dễ sau khi trả lời đúng.
+ */
+export default function Review({ due = [], fresh = [], practicePool = [], allWords = [], dueTomorrow = 0, onAddNew }) {
+  const pool = allWords.length >= OPTION_COUNT ? allWords : [...due, ...fresh];
+  const [session, setSession] = useState(() => startSession([...due, ...shuffle(fresh)], pool, false));
+  const timerRef = useRef(null);
+  const shownAtRef = useRef(0);
+  const pendingRef = useRef(null);
 
-export default function Review({ words = [], setWords, remember = [], setRememberedWords }) {
-  const correctSoundRef = useRef(null);
-  const wrongSoundRef = useRef(null);
-  const [order, setOrder] = useState([]);
-  const [directionList, setDirectionList] = useState([]);
-  const [qIndex, setQIndex] = useState(0);
+  const { question, picked, finished } = session;
+  const locked = picked !== null;
+  const isCorrect = locked && question.options[picked].correct;
+  const total = session.queue.length;
 
-  const [questionPrompt, setQuestionPrompt] = useState("");
-  const [options, setOptions] = useState([]);
-  const [picked, setPicked] = useState(null);
-  const [locked, setLocked] = useState(false);
-  const [isCorrect, setIsCorrect] = useState(null);
-  const [score, setScore] = useState(0);
-  const [correctAnswerText, setCorrectAnswerText] = useState("");
-  const [sendWord, setSendWord] = useState("");
-  const autoNextTimeoutRef = useRef(null);
-  const total = words ? words.length : 0;
-  useEffect(() => {
-    correctSoundRef.current = new Audio("/Vocabulary/sounds/ding.wav");
-    wrongSoundRef.current = new Audio("/Vocabulary/sounds/buzz.wav");
-    correctSoundRef.current.load();
-    wrongSoundRef.current.load();
-  }, []);
-
-  /* ── TTS SỬA ĐỔI: Thêm tham số clearQueue để kiểm soát âm thanh ── */
-  /* ── TTS PROMISE: Đợi đọc xong mới chạy tiếp ── */
-  const speak = (text, lang = "en-US", clearQueue = true) => {
-    return new Promise((resolve) => {
-      if (!window.speechSynthesis || !text) {
-        resolve();
-        return;
-      }      
-      if (clearQueue) {
-        window.speechSynthesis.cancel();
-      }      
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = lang; 
-      u.rate = 0.9;
-      u.onend = () => resolve();
-      u.onerror = () => resolve();
-      window.speechSynthesis.speak(u);
-    });
+  const commitPending = (gradeOverride) => {
+    const p = pendingRef.current;
+    if (!p) return false;
+    pendingRef.current = null;
+    if (p.practice) return p.grade === Rating.Again;
+    return recordReview(p.word, gradeOverride ?? p.grade).stillLearning;
   };
 
-  // Khởi tạo trật tự câu hỏi ban đầu
   useEffect(() => {
-    if (!words || words.length === 0) return;
-    setOrder(makeShuffledOrder(words.length));
-    setDirectionList(makeDirectionList(words.length));
-    setQIndex(0);
-    setScore(0);
-  }, [words]);
-
-  const currentWordIndex = order[qIndex] !== undefined ? order[qIndex] : 0;
-  const dir = directionList[qIndex] || "en2vi";
-  const hintText = dir === "en2vi" ? "Từ này có nghĩa tiếng Việt là gì?" : "Từ tiếng Anh tương ứng là gì?";
-
-  // Xử lý logic tạo câu hỏi và PHÁT ÂM CÂU HỎI
-  useEffect(() => {
-    if (!words || words.length === 0 || order[qIndex] === undefined || !directionList[qIndex]) return;
-
-    const correctWord = words[currentWordIndex];
-    if (!correctWord) return;
-
-    let promptText = "";
-    let correctAnswer = "";
-    let wrongPoolRaw = [];
-
-    if (dir === "en2vi") {
-      promptText = correctWord.Word;
-      correctAnswer = correctWord.Meaning;
-      wrongPoolRaw = words
-        .map((w, i) => ({ txt: w.Meaning, i }))
-        .filter((w) => w.i !== currentWordIndex);      
-      setSendWord(promptText);
-      speak(correctWord.Word, "en-US", false);
-    } else {
-      promptText = correctWord.Meaning;
-      correctAnswer = correctWord.Word;
-      wrongPoolRaw = words
-        .map((w, i) => ({ txt: w.Word, i }))
-        .filter((w) => w.i !== currentWordIndex);      
-      setSendWord(correctWord.Word);
-      speak(correctWord.Meaning, "vi-VN", false);
-    }
-
-    const wrongPool = shuffleArray(wrongPoolRaw)
-      .slice(0, 3)
-      .map((item) => ({
-        text: item.txt,
-        correct: false,
-      }));
-
-    const optsShuffled = shuffleArray([
-      { text: correctAnswer, correct: true },
-      ...wrongPool,
-    ]);
-
-    setQuestionPrompt(promptText);
-    setCorrectAnswerText(correctAnswer);
-    setOptions(optsShuffled);
-    setPicked(null);
-    setLocked(false);
-    setIsCorrect(null);
-
-    if (autoNextTimeoutRef.current) {
-      clearTimeout(autoNextTimeoutRef.current);
-      autoNextTimeoutRef.current = null;
-    }
-  }, [qIndex, order, directionList, currentWordIndex, dir]);
-
-  useEffect(() => {
+    preloadSounds("ding", "buzz");
     return () => {
-      if (autoNextTimeoutRef.current) {
-        clearTimeout(autoNextTimeoutRef.current);
-      }
+      clearTimeout(timerRef.current);
+      cancelSpeech();
+      commitPending(); // rời tab giữa chừng vẫn lưu câu vừa trả lời
     };
   }, []);
 
-  const goNextQuestion = () => {
-    if (qIndex < total - 1) {
-      setQIndex((prev) => prev + 1);
-    } else {
-      const newOrder = makeShuffledOrder(total);
-      const newDirs = makeDirectionList(total);
-      setOrder(newOrder);
-      setDirectionList(newDirs);
-      setQIndex(0);
-      setScore(0);
-    }
-  };
+  useEffect(() => {
+    if (!question) return;
+    shownAtRef.current = performance.now();
+    if (question.dir === "en2vi") speak(question.word.Word, "en-US");
+    else speak(question.word.Meaning, "vi-VN");
+  }, [question]);
 
-  const chooseAnswer = (choiceIdx) => {
-    if (locked) return;
-    const choice = options[choiceIdx];
-    const correctNow = !!choice.correct;
-    
-    submitData(sendWord, correctNow ? 1 : 0);
-    
-    setPicked(choiceIdx);
-    setLocked(true);
-    setIsCorrect(correctNow);
-    
-    if (correctNow) {
-      correctSoundRef.current.play();
-      setScore((s) => s + 1);
-      // Nâng cao UX: Chọn ĐÚNG thì đọc lại từ tiếng Anh đó để ghi nhớ sâu
-      const currentWord = words[currentWordIndex];
-      setWords((prevWords) => {
-        return prevWords.filter(
-          (w) => w.Word !== currentWord.Word
-        );
-      });
-      setRememberedWords((prev) => {
-        return [...prev, currentWord];
-      });
-      // setWords((prevWords) => {
-      //   const updatedWords = [...prevWords];
-      //   const wordToUpdate = updatedWords.find(w => w.Word === currentWord.Word);
-      //   if (wordToUpdate) {
-      //     wordToUpdate.Status = "1";
-      //   }        
-      //   return updatedWords;
-      // });
-      //if (currentWord) speak(currentWord.Word, "en-US", true);
-    } else {
-      // Chọn SAI: Đọc từ đúng để nhắc nhở
-      wrongSoundRef.current.play();
-      const currentWord = words[currentWordIndex];
-      //if (currentWord) speak(`Đáp án đúng phải là: ${currentWord.Word}`, "en-US", true);
-    }
-
-    autoNextTimeoutRef.current = setTimeout(() => {
-      goNextQuestion();
-    }, 2000); // Tăng lên 2s để người dùng kịp nghe phát âm đáp án
-  };
-
-  const submitData = async (Words, status) => {
-    try {
-      await fetch(
-        "https://script.google.com/macros/s/AKfycbzBCRTzrGnN8-oGB1iF9a78F3r1AsPloNPGd_qipcx2qYkZQzB6j9batyMyAfTEpYEf/exec",
-        {
-          method: "POST",
-          headers: { "Content-Type": "text/plain" },
-          body: JSON.stringify({
-            action: "updateStatus",
-            Words: Words,
-            Status: status 
-          }),
+  const goNext = (gradeOverride) => {
+    clearTimeout(timerRef.current);
+    const p = pendingRef.current;
+    const finalGrade = gradeOverride ?? p?.grade;
+    const again = commitPending(gradeOverride);
+    const requeue = again && p ? { word: p.word, dir: randDir() } : null;
+    setSession((cur) => {
+      const queue = [...cur.queue];
+      let relearn = cur.relearn;
+      if (requeue) {
+        const prevRepeat = cur.queue[cur.qIndex]?.repeat ?? 0;
+        if (prevRepeat < MAX_REPEATS) {
+          queue.splice(Math.min(queue.length, cur.qIndex + 4), 0, { ...requeue, repeat: prevRepeat + 1 });
+          relearn += 1;
         }
-      );
-    } catch (error) {
-      console.error("Lỗi khi gửi dữ liệu:", error);
-    }
+      }
+      const counts = finalGrade ? { ...cur.counts, [finalGrade]: cur.counts[finalGrade] + 1 } : cur.counts;
+      const nextIdx = cur.qIndex + 1;
+      const base = { ...cur, queue, counts, relearn, picked: null, grade: null, preview: null };
+      if (nextIdx >= queue.length) return { ...base, finished: true };
+      return { ...base, qIndex: nextIdx, question: buildQuestion(queue[nextIdx], pool) };
+    });
   };
 
-  // ── ĐỂ ĐOẠN ĐIỀU KIỆN RỖNG XUỐNG ĐÂY (SAU KHI ĐÃ KHAI BÁO HẾT HOOKS) ──
-  if (!words || words.length === 0) {
+  const choose = (i) => {
+    if (locked || !question) return;
+    const correct = question.options[i].correct;
+    const thinkMs = performance.now() - shownAtRef.current;
+    const grade = !correct ? Rating.Again : thinkMs > SLOW_MS ? Rating.Hard : Rating.Good;
+    playSound(correct ? "ding" : "buzz");
+    if (!correct) speak(question.word.Word, "en-US");
+    if (navigator.vibrate && !correct) navigator.vibrate(60);
+    pendingRef.current = { word: question.word, grade, practice: session.practice };
+    const preview = session.practice ? null : previewIntervals(question.word);
+    setSession((cur) => ({ ...cur, picked: i, grade, preview }));
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => goNext(), AUTO_NEXT_MS);
+  };
+
+  const restart = (items, practice) => {
+    clearTimeout(timerRef.current);
+    commitPending();
+    setSession(startSession(shuffle(items), pool, practice));
+  };
+
+  const onKey = useEffectEvent((e) => {
+    if (e.target.closest?.("input, textarea") || finished || !question) return;
+    const n = parseInt(e.key, 10);
+    if (!locked && n >= 1 && n <= question.options.length) return choose(n - 1);
+    if (!locked) return;
+    const k = e.key.toLowerCase();
+    if (e.key === "Enter" || e.key === "ArrowRight") {
+      e.preventDefault();
+      goNext();
+    } else if (isCorrect && !session.practice && ["h", "g", "e"].includes(k)) {
+      goNext({ h: Rating.Hard, g: Rating.Good, e: Rating.Easy }[k]);
+    }
+  });
+  useEffect(() => {
+    const h = (e) => onKey(e);
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
+
+  /* ── Kết thúc / không có việc ── */
+  if (finished) {
+    const c = session.counts;
+    const answered = c[Rating.Again] + c[Rating.Hard] + c[Rating.Good] + c[Rating.Easy];
+    const pct = answered ? Math.round(((answered - c[Rating.Again]) / answered) * 100) : 0;
+    const nothing = answered === 0;
+    const Icon = nothing ? PartyPopper : pct >= 85 ? Trophy : pct >= 60 ? Dumbbell : BookOpen;
     return (
-      <div style={S.root}>
-        <div style={S.shell}>
-          <div style={{ textAlign: "center", color: "#8f8fad", padding: "32px 0" }}>
-            <span style={{ fontSize: "2.5rem" }}>✨</span>
-            <p style={{ marginTop: "16px", fontSize: "1.1rem", fontWeight: 700, color: "#fff" }}>Sẵn sàng học tập!</p>
-            <p style={{ fontSize: "0.85rem", color: "#5a5a8a", marginTop: "4px" }}>Vui lòng thêm danh sách từ vựng để bắt đầu thử thách.</p>
+      <div className="scroll-soft flex h-full flex-col px-4 pb-4">
+        <div className="card m-auto w-full animate-pop p-6 text-center" data-pet-ignore>
+          <div className="mx-auto grid size-16 place-items-center rounded-3xl bg-linear-to-br from-brand to-brand-2 text-white shadow-glow">
+            <Icon size={30} />
+          </div>
+          <p className="mt-4 text-lg font-bold">
+            {nothing ? "Hôm nay không còn từ nào cần ôn!" : session.practice ? "Xong phần luyện tự do" : "Hoàn thành phiên ôn tập"}
+          </p>
+
+          {!nothing && (
+            <>
+              <p className="mt-1 text-ink-2">
+                <b className="font-display text-2xl text-good">{answered - c[Rating.Again]}</b> / {answered} lần đúng · {pct}%
+              </p>
+              {!session.practice && (
+                <div className="mt-4 grid grid-cols-4 gap-2">
+                  {[
+                    [Rating.Again, "Quên", "bad"],
+                    [Rating.Hard, "Khó", "warn"],
+                    [Rating.Good, "Tốt", "good"],
+                    [Rating.Easy, "Dễ", "info"],
+                  ].map(([r, label, tone]) => (
+                    <div key={r} className="rounded-2xl bg-surface-2 py-2">
+                      <p className="font-display text-xl font-bold">{c[r]}</p>
+                      <Chip tone={tone} className="mt-1">
+                        {label}
+                      </Chip>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          <p className="mt-4 text-sm leading-relaxed text-muted">
+            {session.practice
+              ? "Luyện tự do không làm thay đổi lịch ôn."
+              : dueTomorrow > 0
+                ? `Còn ${dueTomorrow} từ đến hạn nhưng đã chạm giới hạn ôn/ngày.`
+                : "Lịch FSRS đã được cập nhật — hẹn gặp lại ở lần ôn tới!"}
+          </p>
+
+          <div className="mt-5 flex flex-col gap-2">
+            {onAddNew && (
+              <Button variant="primary" size="lg" onClick={onAddNew}>
+                <Plus size={18} /> Học thêm 5 từ mới
+              </Button>
+            )}
+            {practicePool.length > 0 && (
+              <Button variant="soft" size="lg" onClick={() => restart(practicePool, true)}>
+                <Target size={18} /> Luyện tự do ({practicePool.length} từ hôm nay)
+              </Button>
+            )}
           </div>
         </div>
       </div>
     );
   }
 
-  const progressPercent = total > 0 ? ((qIndex + 1) / total) * 100 : 0;
+  const hint = question.dir === "en2vi" ? "Nghĩa tiếng Việt là gì?" : "Từ tiếng Anh tương ứng là gì?";
+  const preview = session.preview;
+  const answeredCount = Object.values(session.counts).reduce((a, b) => a + b, 0);
+  const correctCount = answeredCount - session.counts[Rating.Again];
 
   return (
-    <div style={S.root}>
-      <div style={S.shell}>
-        
-        {/* ── TOP BAR ── */}
-        <div style={S.topBar}>
-          <div style={S.logoMark}>
-            <EditIcon />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={S.appTitle}>Kiểm tra từ vựng</div>
-          </div>
-          <div style={S.badge}>
-            {qIndex + 1} / {total}
-          </div>
-        </div>
-
-        {/* ── PROGRESS TRACK ── */}
-        <div style={S.progressWrap}>
-          <div style={S.progressTrack}>
-            <div style={{ ...S.progressFill, width: `${progressPercent}%` }} />
-          </div>
-        </div>
-
-        {/* ── KHUNG TỦ VỰC CÂU HỎI ── */}
-        <div style={S.wordBox}>
-          <div style={S.faceLang}>{dir === "en2vi" ? "EN" : "VI"}</div>
-          <div style={S.enWord}>{questionPrompt}</div>
-          <div style={S.hint}>{hintText}</div>
-        </div>
-
-        {/* ── DANH SÁCH ĐÁP ÁN ── */}
-        <div style={S.optionsWrap}>
-          {options.map((opt, i) => {
-            const chosen = picked === i;
-            const isThisCorrectAnswer = opt.correct === true;
-
-            return (
-              <button
-                key={i}
-                style={S.optionBtn({
-                  chosen,
-                  locked,
-                  correct: opt.correct,
-                  isThisCorrectAnswer,
-                })}
-                onClick={() => chooseAnswer(i)}
-                disabled={locked}
-              >
-                {opt.text}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* ── KHUNG PHẢN HỒI ĐÚNG/SAI ĐỘNG ── */}
-        <div style={S.feedbackBox(locked, isCorrect)}>
-          {locked && (
-            <div style={S.feedbackText(isCorrect)}>
-              {isCorrect 
-                ? "🎉 Xuất sắc! Bạn đúng rồi."
-                : `💡 Đáp án đúng là: ${correctAnswerText}`}
-            </div>
-          )}
-        </div>
-
-        {/* ── ĐIỂM SỐ TÍCH LŨY DƯỚI ĐÁY ── */}
-        <div style={S.progressText}>
-          ĐÃ ĐÚNG: <span style={{ color: "#34d399", fontWeight: 800 }}>{score}</span> / {qIndex + 1} CÂU
-        </div>
-
+    <div className="scroll-soft flex h-full flex-col gap-3 px-4 pt-1 pb-4">
+      <div className="flex items-center gap-2">
+        <h1 className="flex-1 text-[15px] font-bold">{session.practice ? "🎯 Luyện tự do" : "🧠 Ôn tập FSRS"}</h1>
+        {session.relearn > 0 && (
+          <Chip tone="warn" className="font-display">
+            <RotateCw size={11} /> {session.relearn}
+          </Chip>
+        )}
+        <Chip tone="brand" className="font-display">
+          {session.qIndex + 1} / {total}
+        </Chip>
       </div>
+      <ProgressBar value={session.qIndex + 1} max={total} tone="good" />
+
+      {/* CÂU HỎI */}
+      <AnimatePresence mode="popLayout" initial={false}>
+        <motion.div
+          key={session.qIndex}
+          initial={{ opacity: 0, y: 16, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -12, scale: 0.98 }}
+          transition={{ type: "spring", stiffness: 360, damping: 32 }}
+          className="card relative flex min-h-[170px] flex-1 flex-col items-center justify-center overflow-hidden px-5 py-8 text-center"
+          data-pet-ignore
+        >
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-linear-to-b from-brand-soft/70 to-transparent" />
+          {question.isNew && !session.practice && (
+            <Chip tone="warn" className="absolute top-3.5 left-3.5">
+              Từ mới
+            </Chip>
+          )}
+          <Chip tone="brand" className="absolute top-3.5 right-3.5">
+            {question.dir === "en2vi" ? "EN → VI" : "VI → EN"}
+          </Chip>
+          <button
+            type="button"
+            title="Nghe lại"
+            onClick={() => (question.dir === "en2vi" ? speak(question.word.Word, "en-US") : speak(question.word.Meaning, "vi-VN"))}
+            className="group relative max-w-full font-display text-[clamp(1.7rem,7vw,2.6rem)] leading-tight font-bold tracking-tight break-words text-ink"
+          >
+            {question.prompt}
+            <Volume2 size={18} className="ml-2 inline-block align-middle text-muted opacity-60 transition group-hover:text-brand group-hover:opacity-100" />
+          </button>
+          <p className="relative mt-2 text-sm text-muted">{hint}</p>
+        </motion.div>
+      </AnimatePresence>
+
+      {/* ĐÁP ÁN */}
+      <div className="grid shrink-0 grid-cols-2 gap-2.5" data-pet-ignore>
+        {question.options.map((opt, i) => {
+          let state = "border-line bg-surface hover:border-brand/40 hover:-translate-y-0.5";
+          let keyCls = "bg-brand-soft text-brand-ink";
+          if (locked) {
+            if (i === picked && opt.correct) {
+              state = "border-good bg-good-soft text-good ring-4 ring-good/15";
+              keyCls = "bg-good text-white";
+            } else if (i === picked) {
+              state = "border-bad bg-bad-soft text-bad ring-4 ring-bad/15 animate-shake";
+              keyCls = "bg-bad text-white";
+            } else if (opt.correct) {
+              state = "border-good bg-good-soft text-good";
+              keyCls = "bg-good text-white";
+            } else state = "border-line bg-surface opacity-45";
+          }
+          return (
+            <button
+              key={`${session.qIndex}-${i}`}
+              type="button"
+              disabled={locked}
+              onClick={() => choose(i)}
+              className={cx(
+                "tap flex min-h-16 items-center gap-2.5 rounded-2xl border-[1.5px] px-3.5 py-3 text-left text-[clamp(.95rem,3.8vw,1.1rem)] font-semibold break-words text-ink-2 shadow-card",
+                state,
+              )}
+            >
+              <span className={cx("grid size-6 shrink-0 place-items-center rounded-full font-display text-xs font-bold", keyCls)}>{i + 1}</span>
+              <span className="min-w-0">{opt.text}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* PHẢN HỒI */}
+      <div className="min-h-[60px] shrink-0" data-pet-ignore aria-live="polite">
+        <AnimatePresence mode="wait">
+          {locked && (
+            <motion.div
+              key="fb"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className={cx(
+                "flex flex-wrap items-center gap-2 rounded-2xl border px-3.5 py-2.5 text-sm font-semibold",
+                isCorrect ? "border-good/25 bg-good-soft text-good" : "border-bad/25 bg-bad-soft text-bad",
+              )}
+            >
+              {isCorrect && preview ? (
+                <>
+                  <span className="mr-auto">🎉 Đúng! Ôn lại sau:</span>
+                  <div className="flex gap-1.5">
+                    {GRADES.map((g) => (
+                      <button
+                        key={g.r}
+                        type="button"
+                        onClick={() => goNext(g.r)}
+                        title={`${g.label} — phím ${g.key}`}
+                        className={cx(
+                          "tap flex min-w-[62px] flex-col items-center rounded-xl border-[1.5px] bg-surface px-2 py-1 leading-tight",
+                          g.cls,
+                          session.grade === g.r ? "border-current shadow-card" : "border-transparent",
+                        )}
+                      >
+                        <b className="text-[12px]">{g.label}</b>
+                        <small className="font-display text-[10.5px] text-muted">{formatInterval(preview[g.r])}</small>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="mr-auto min-w-0">
+                    {isCorrect ? "🎉 Xuất sắc! Bạn đúng rồi." : `💡 Đáp án: ${question.answer}`}
+                    {!isCorrect && preview && <span className="font-normal opacity-80"> · ôn lại sau {formatInterval(preview[Rating.Again])}</span>}
+                  </span>
+                  <Button size="sm" variant="ghost" onClick={() => goNext()}>
+                    Tiếp <ArrowRight size={15} />
+                  </Button>
+                </>
+              )}
+              <motion.div
+                key={`bar-${session.qIndex}`}
+                className={cx("h-0.5 w-full origin-left rounded-full", isCorrect ? "bg-good/40" : "bg-bad/40")}
+                initial={{ scaleX: 1 }}
+                animate={{ scaleX: 0 }}
+                transition={{ duration: AUTO_NEXT_MS / 1000, ease: "linear" }}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      <p className="shrink-0 text-center text-xs font-semibold tracking-wide text-muted">
+        ĐÚNG <span className="font-display text-good">{correctCount}</span> / {answeredCount} LẦN
+        <span className="hidden md:inline"> · phím 1–4 chọn · H/G/E chấm</span>
+      </p>
     </div>
   );
 }
-
-const EditIcon = () => (
-  <svg width={14} height={14} viewBox="0 0 24 24" fill="none"
-    stroke="#748ffc" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
-  </svg>
-);
-
-const S = {
-  root: {
-    width: "100%",
-    height: "100%",
-    display: "flex",
-    flexDirection: "column",
-    padding: "0 16px 12px",
-    boxSizing: "border-box",
-    overflow: "hidden",
-    background: "transparent",
-    fontFamily: "'DM Sans', system-ui, -apple-system, sans-serif",
-  },
-  shell: {
-    width: "100%",
-    height: "100%",
-    display: "flex",
-    flexDirection: "column",
-    boxSizing: "border-box",
-  },
-  topBar: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 8,
-    flexShrink: 0,
-  },
-  logoMark: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    background: "rgba(76,110,245,0.15)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  appTitle: {
-    fontSize: 13,
-    fontWeight: 600,
-    color: "#fff",
-  },
-  badge: {
-    fontSize: 10,
-    fontWeight: 700,
-    backgroundColor: "rgba(76,110,245,0.15)",
-    color: "#748ffc",
-    padding: "3px 8px",
-    borderRadius: 99,
-  },
-  progressWrap: {
-    marginBottom: 10,
-    flexShrink: 0,
-  },
-  progressTrack: {
-    width: "100%",
-    height: 4,
-    background: "#141428",
-    borderRadius: 99,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: "#34d399",
-    borderRadius: 99,
-    transition: "width 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-  },
-  wordBox: {
-    position: "relative",
-    borderRadius: 16,
-    background: "linear-gradient(135deg, #ffffff, #fff)",
-    border: "1px solid #2a2a5a",
-    padding: "16px",
-    flex: 1, 
-    minHeight: 80, 
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "center",
-    alignItems: "center",
-    textAlign: "center",
-    boxSizing: "border-box",
-    marginBottom: 10,
-  },
-  faceLang: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    fontSize: 10,
-    fontWeight: 700,
-    color: "#748ffc",
-    background: "rgba(76,110,245,0.15)",
-    padding: "2px 6px",
-    borderRadius: 6,
-  },
-  enWord: {
-    fontSize: "2.5rem", 
-    fontWeight: 800,
-    letterSpacing: "-0.02em",
-    color: "#000000",
-    marginBottom: 4,
-    wordBreak: "break-word",
-    lineHeight: 1.2,
-  },
-  hint: {
-    fontSize: "0.8rem",
-    fontWeight: 500,
-    color: "#5a5a8a",
-  },
-  optionsWrap: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: "16px",
-    marginBottom: 8,
-    flexShrink: 0,
-  },
-  optionBtn: ({ chosen, locked, correct, isThisCorrectAnswer }) => {
-    let bg = "#141428";
-    let border = "#1e1e38";
-    let textColor = "#b0b0d0";
-    let boxShadow = "none";
-
-    if (!locked) {
-      return {
-        textAlign: "left",
-        borderRadius: "12px",
-        border: `1px solid ${border}`,
-        backgroundColor: bg,
-        padding: "11px 16px", 
-        fontSize: "1.5rem",
-        fontWeight: 600,
-        color: textColor,
-        cursor: "pointer",
-        wordBreak: "break-word",
-        transition: "all 0.12s ease",
-        WebkitTapHighlightColor: "transparent",
-      };
-    }
-
-    if (chosen && correct) {
-      bg = "rgba(16, 185, 129, 0.15)";
-      border = "#10b981";
-      textColor = "#34d399";
-      boxShadow = "0 0 12px rgba(16,185,129,0.2)";
-    } else if (chosen && !correct) {
-      bg = "rgba(239, 68, 68, 0.15)";
-      border = "#ef4444";
-      textColor = "#f87171";
-      boxShadow = "0 0 12px rgba(239,68,68,0.2)";
-    } else if (isThisCorrectAnswer) {
-      bg = "rgba(16, 185, 129, 0.1)";
-      border = "#10b981";
-      textColor = "#34d399";
-    } else {
-      bg = "#0d0d1a";
-      border = "#141428";
-      textColor = "#444466";
-    }
-
-    return {
-      textAlign: "left",
-      borderRadius: "12px",
-      border: `1px solid ${border}`,
-      backgroundColor: bg,
-      padding: "11px 16px",
-      fontSize: "1.5rem",
-      fontWeight: 600,
-      color: textColor,
-      cursor: "default",
-      wordBreak: "break-word",
-      boxShadow,
-      transition: "all 0.15s ease",
-      WebkitTapHighlightColor: "transparent",
-    };
-  },
-  feedbackBox: (locked, isCorrect) => {
-    if (!locked) return { height: "38px", marginBottom: "8px", flexShrink: 0 };
-    return {
-      height: "38px",
-      borderRadius: "10px",
-      backgroundColor: isCorrect ? "rgba(16,185,129,0.08)" : "rgba(239,68,68,0.08)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: "4px 12px",
-      marginBottom: "8px",
-      border: isCorrect ? "1px solid rgba(16,185,129,0.2)" : "1px solid rgba(239,68,68,0.2)",
-      transition: "all 0.2s ease",
-      flexShrink: 0,
-    };
-  },
-  feedbackText: (isCorrect) => ({
-    textAlign: "center",
-    fontSize: "0.85rem",
-    fontWeight: 700,
-    color: isCorrect ? "#34d399" : "#f87171",
-  }),
-  progressText: {
-    fontSize: "0.8rem",
-    fontWeight: 600,
-    color: "#5a5a8a",
-    textAlign: "center",
-    letterSpacing: "0.04em",
-    flexShrink: 0,
-  },
-};
