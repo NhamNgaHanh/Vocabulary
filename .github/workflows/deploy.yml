@@ -32,21 +32,34 @@ jobs:
 
       - run: npm run lint
 
+      # Nhận giá trị từ Repository secrets (ưu tiên) hoặc Repository variables.
+      # LƯU Ý: secret tạo trong Settings → Environments → github-pages sẽ KHÔNG có ở job này.
+      - name: Kiểm tra cấu hình
+        env:
+          VITE_SHEET_ID: ${{ secrets.VITE_SHEET_ID || vars.VITE_SHEET_ID }}
+          VITE_SHEETS_API_KEY: ${{ secrets.VITE_SHEETS_API_KEY || vars.VITE_SHEETS_API_KEY }}
+          VITE_SCRIPT_URL: ${{ secrets.VITE_SCRIPT_URL || vars.VITE_SCRIPT_URL }}
+        run: |
+          missing=0
+          for name in VITE_SHEET_ID VITE_SHEETS_API_KEY VITE_SCRIPT_URL; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Thiếu $name — thêm ở Settings → Secrets and variables → Actions → Repository secrets"
+              missing=1
+            else
+              echo "✓ $name đã có (giá trị được ẩn)"
+            fi
+          done
+          exit $missing
+
       - name: Build
         run: npm run build
         env:
-          VITE_SHEET_ID: ${{ secrets.VITE_SHEET_ID }}
-          VITE_SHEETS_API_KEY: ${{ secrets.VITE_SHEETS_API_KEY }}
+          VITE_SHEET_ID: ${{ secrets.VITE_SHEET_ID || vars.VITE_SHEET_ID }}
+          VITE_SHEETS_API_KEY: ${{ secrets.VITE_SHEETS_API_KEY || vars.VITE_SHEETS_API_KEY }}
           VITE_SHEET_NAME: ${{ vars.VITE_SHEET_NAME || 'Sheet1' }}
-          VITE_SCRIPT_URL: ${{ secrets.VITE_SCRIPT_URL }}
-          VITE_SCRIPT_TOKEN: ${{ secrets.VITE_SCRIPT_TOKEN }}
+          VITE_SCRIPT_URL: ${{ secrets.VITE_SCRIPT_URL || vars.VITE_SCRIPT_URL }}
+          VITE_SCRIPT_TOKEN: ${{ secrets.VITE_SCRIPT_TOKEN || vars.VITE_SCRIPT_TOKEN }}
           VITE_SRS_SHEET_SYNC: ${{ vars.VITE_SRS_SHEET_SYNC }}
-
-      - name: Kiểm tra đã cấu hình secret
-        run: |
-          if [ -z "${{ secrets.VITE_SHEET_ID }}" ] || [ -z "${{ secrets.VITE_SHEETS_API_KEY }}" ]; then
-            echo "::warning::Chưa có secret VITE_SHEET_ID / VITE_SHEETS_API_KEY — app sẽ báo 'Chưa cấu hình'."
-          fi
 
       - uses: actions/upload-pages-artifact@v3
         with:
