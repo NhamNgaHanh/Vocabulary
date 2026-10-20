@@ -3,12 +3,15 @@
 // phải được giới hạn theo HTTP referrer trong Google Cloud Console.
 const env = import.meta.env;
 
-export const SHEET_ID = env.VITE_SHEET_ID ?? "";
-export const SHEETS_API_KEY = env.VITE_SHEETS_API_KEY ?? "";
-export const SHEET_NAME = env.VITE_SHEET_NAME || "Sheet1";
-export const SCRIPT_URL = env.VITE_SCRIPT_URL ?? "";
+// Làm sạch giá trị: bỏ khoảng trắng/xuống dòng và dấu ngoặc kép thừa khi dán vào GitHub Secrets.
+const clean = (v) => String(v ?? "").trim().replace(/^["']|["']$/g, "").trim();
+
+export const SHEET_ID = clean(env.VITE_SHEET_ID);
+export const SHEETS_API_KEY = clean(env.VITE_SHEETS_API_KEY);
+export const SHEET_NAME = clean(env.VITE_SHEET_NAME) || "Sheet1";
+export const SCRIPT_URL = clean(env.VITE_SCRIPT_URL);
 // Token bí mật gửi kèm mỗi request tới Apps Script (xem APPS_SCRIPT.md).
-export const SCRIPT_TOKEN = env.VITE_SCRIPT_TOKEN ?? "";
+export const SCRIPT_TOKEN = clean(env.VITE_SCRIPT_TOKEN);
 
 // Bật để đồng bộ trạng thái FSRS lên cột L của Sheet (cần cập nhật Apps Script — xem APPS_SCRIPT.md).
 export const SRS_SHEET_SYNC = /^(1|true|yes)$/i.test(env.VITE_SRS_SHEET_SYNC ?? "");

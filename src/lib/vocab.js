@@ -34,9 +34,29 @@ export function parseSheet(values = []) {
 export async function fetchVocab(signal) {
   const url =
     `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}` +
-    `/values/${encodeURIComponent(SHEET_NAME)}?key=${SHEETS_API_KEY}`;
+    `/values/${encodeURIComponent(SHEET_NAME)}?key=${encodeURIComponent(SHEETS_API_KEY)}`;
   const res = await fetch(url, { signal });
-  if (!res.ok) throw new Error(`Sheets API HTTP ${res.status}`);
+  if (!res.ok) {
+    let detail = "";
+    try {
+      detail = (await res.json())?.error?.message ?? "";
+    } catch {
+      /* không phải JSON */
+    }
+    const hint =
+      res.status === 403 && /unregistered callers/i.test(detail)
+        ? "API key rỗng hoặc sai — kiểm tra VITE_SHEETS_API_KEY"
+        : res.status === 403 && /referer/i.test(detail)
+          ? "API key đang chặn tên miền này — thêm trang web vào HTTP referrers"
+          : res.status === 403
+            ? "không có quyền đọc Sheet — bật Google Sheets API và chia sẻ Sheet 'Bất kỳ ai có link'"
+            : res.status === 400
+              ? "API key không hợp lệ"
+              : res.status === 404
+                ? "sai VITE_SHEET_ID hoặc tên trang tính"
+                : detail;
+    throw new Error(`Sheets API ${res.status}: ${hint}`);
+  }
   const data = await res.json();
   return parseSheet(data.values);
 }

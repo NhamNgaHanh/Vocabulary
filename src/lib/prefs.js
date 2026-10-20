@@ -1,6 +1,6 @@
 // Tuỳ chọn giao diện nhỏ của từng thiết bị (không đồng bộ lên Sheet).
 const KEY = "vl-prefs-v1";
-const DEFAULTS = { showPet: true, sounds: true };
+const DEFAULTS = { showPet: true, sounds: true, reviewMode: "meaning" };
 
 let prefs = (() => {
   try {

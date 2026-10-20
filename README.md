@@ -36,6 +36,19 @@ npm run dev
 | `npm run build` | Build vào `dist/` |
 | `npm run deploy` | Lint + build + đẩy lên GitHub Pages |
 
+## Deploy lên GitHub Pages
+
+Địa chỉ: **https://nhamngahanh.github.io/Vocabulary/** (`base` trong `vite.config.js` phải trùng tên repo `Vocabulary`, phân biệt hoa thường).
+
+**Cách 1 — Tự động bằng GitHub Actions (khuyên dùng)**: file `.github/workflows/deploy.yml` build & deploy mỗi lần push lên `master`.
+1. GitHub → repo → **Settings → Pages → Source: GitHub Actions**.
+2. **Settings → Secrets and variables → Actions → New repository secret**, thêm: `VITE_SHEET_ID`, `VITE_SHEETS_API_KEY`, `VITE_SCRIPT_URL`, `VITE_SCRIPT_TOKEN` (giá trị lấy từ `.env`). Tab *Variables* (tuỳ chọn): `VITE_SHEET_NAME`, `VITE_SRS_SHEET_SYNC`.
+3. `git push` → xem tiến trình ở tab **Actions** (~1–2 phút).
+
+**Cách 2 — Từ máy bằng `gh-pages`**: `npm run deploy` (lint + build bằng `.env` trên máy rồi đẩy `dist/` lên nhánh `gh-pages`). Khi dùng cách này, chọn **Settings → Pages → Source: Deploy from a branch → `gh-pages` / root**. Chỉ dùng một trong hai cách.
+
+> Biến `VITE_*` vẫn nằm trong file JS công khai sau khi build — nhớ giới hạn API key theo referrer `https://nhamngahanh.github.io/*` (xem APPS_SCRIPT.md).
+
 ## Cấu trúc Google Sheet (`Sheet1`)
 
 | Cột | A | B | C | E1 | F | G | H | I | K | L (tuỳ chọn) |

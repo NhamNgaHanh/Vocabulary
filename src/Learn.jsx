@@ -8,9 +8,9 @@ import { speak, cancelSpeech } from "./lib/tts";
 import lighthouse from "./assets/lighthouse.webp";
 
 const cardVariants = {
-  enter: (d) => ({ x: d > 0 ? 120 : d < 0 ? -120 : 0, opacity: 0, rotate: d * 4, scale: 0.96 }),
-  center: { x: 0, opacity: 1, rotate: 0, scale: 1, transition: { type: "spring", stiffness: 320, damping: 30 } },
-  exit: (d) => ({ x: d > 0 ? -120 : d < 0 ? 120 : 0, opacity: 0, rotate: -d * 4, scale: 0.96, transition: { duration: 0.2 } }),
+  enter: (d) => ({ x: d > 0 ? 120 : d < 0 ? -120 : 0, opacity: 0, rotate: d * 3 }),
+  center: { x: 0, opacity: 1, rotate: 0, transition: { type: "spring", stiffness: 320, damping: 30 } },
+  exit: (d) => ({ x: d > 0 ? -120 : d < 0 ? 120 : 0, opacity: 0, rotate: -d * 3, transition: { duration: 0.18 } }),
 };
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -201,7 +201,7 @@ export default function Learn({ collections = [], getBadge, onAddNew, onStartRev
 
       {/* FLASHCARD */}
       <div className="relative h-[min(46dvh,400px)] min-h-[260px] shrink-0 perspective-[1400px]" data-pet-ignore>
-        <AnimatePresence initial={false} custom={direction} mode="popLayout">
+        <AnimatePresence initial={false} custom={direction} mode="wait">
           <motion.div
             key={`${active?.id}-${index}`}
             data-card
@@ -342,8 +342,23 @@ export default function Learn({ collections = [], getBadge, onAddNew, onStartRev
                 <Chip tone={player.paused ? "warn" : "brand"}>{player.paused ? "Tạm dừng" : "Đang phát"}</Chip>
               </div>
 
+              {/* Mỗi từ là một thẻ MỚI (key theo index) luôn mở ở mặt trước.
+                  Trước đây cùng một thẻ đang lật (mặt nghĩa) được đổi chữ rồi mới lật về,
+                  nên người học thấy nghĩa của từ mới trước khi thấy từ. */}
               <div className="relative min-h-0 flex-1 perspective-[1400px]">
-                <CardFaces word={word} flipped={playerFlipped} phase={player.paused ? null : player.phase} glass />
+                {/* mode="wait": thẻ cũ rời đi hẳn rồi thẻ mới mới vào → không có lúc hai thẻ
+                    chồng mờ lên nhau. Chỉ trượt + mờ dần, không scale để chữ luôn sắc nét. */}
+                <AnimatePresence initial={false} mode="wait">
+                  <motion.div
+                    key={index}
+                    className="absolute inset-0"
+                    initial={{ opacity: 0, x: 40 }}
+                    animate={{ opacity: 1, x: 0, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } }}
+                    exit={{ opacity: 0, x: -40, transition: { duration: 0.16, ease: "easeIn" } }}
+                  >
+                    <CardFaces word={word} flipped={playerFlipped} phase={player.paused ? null : player.phase} glass />
+                  </motion.div>
+                </AnimatePresence>
               </div>
 
               <ProgressBar value={index + 1} max={total} className="my-4 bg-white/40" />
@@ -386,15 +401,22 @@ function NavArrow({ side, onClick }) {
 function CardFaces({ word, flipped, manual = false, phase = null, badge = null, glass = false }) {
   const face = cx(
     "backface-hidden absolute inset-0 flex flex-col items-center justify-center overflow-hidden rounded-[1.75rem] px-6 pt-12 pb-7 text-center",
-    glass ? "bg-surface/90 shadow-pop backdrop-blur-xl" : "card",
+    glass ? "bg-surface shadow-pop" : "card",
   );
+  // Ngoài backface-visibility, chủ động ẩn mặt đang quay ra sau đúng lúc thẻ quay được nửa vòng
+  // (0,25s / 0,5s). Một số trình duyệt (nhất là khi có blur/opacity ở lớp cha) vẫn vẽ xuyên mặt sau,
+  // làm chữ tiếng Anh bị lật ngược hiện mờ phía sau phần nghĩa.
+  const faceVis = (visible) => ({
+    opacity: visible ? 1 : 0,
+    transition: "opacity 0s linear 0.25s",
+  });
   return (
     <div
       className="preserve-3d relative size-full transition-transform duration-500 ease-[cubic-bezier(.4,0,.2,1)]"
       style={{ transform: flipped ? "rotateY(180deg)" : "none" }}
     >
       {/* MẶT TRƯỚC */}
-      <div className={face}>
+      <div className={face} style={faceVis(!flipped)} aria-hidden={flipped}>
         <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-linear-to-b from-brand-soft/70 to-transparent" />
         <Chip tone="brand" className="absolute top-4 left-4">
           EN
@@ -406,7 +428,11 @@ function CardFaces({ word, flipped, manual = false, phase = null, badge = null, 
         )}
         <FitText text={word.Word} max={52} min={20} className="font-display font-bold tracking-tight text-ink" />
         {word.IPA && <p className="mt-2 shrink-0 text-lg text-muted">/{word.IPA}/</p>}
-        {phase === "en" && <Speaking tone="text-brand">Đang phát âm…</Speaking>}
+        {!manual && (
+          <Speaking tone="text-brand" active={phase === "en"}>
+            Đang phát âm…
+          </Speaking>
+        )}
         {manual && (
           <p className="mt-4 flex shrink-0 items-center gap-1.5 text-xs font-medium text-muted">
             <RotateCcw size={12} /> Chạm để xem nghĩa · vuốt để chuyển
@@ -415,7 +441,7 @@ function CardFaces({ word, flipped, manual = false, phase = null, badge = null, 
       </div>
 
       {/* MẶT SAU */}
-      <div className={face} style={{ transform: "rotateY(180deg)" }}>
+      <div className={face} style={{ transform: "rotateY(180deg)", ...faceVis(flipped) }} aria-hidden={!flipped}>
         <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-linear-to-b from-good-soft/80 to-transparent" />
         <Chip tone="good" className="absolute top-4 left-4">
           VI
@@ -432,7 +458,11 @@ function CardFaces({ word, flipped, manual = false, phase = null, badge = null, 
           <Volume2 size={16} />
         </button>
         <FitText text={word.Meaning} max={42} min={18} className="font-bold text-ink" />
-        {phase === "vi" && <Speaking tone="text-good">Đang đọc nghĩa…</Speaking>}
+        {!manual && (
+          <Speaking tone="text-good" active={phase === "vi"}>
+            Đang đọc nghĩa…
+          </Speaking>
+        )}
         {manual && (
           <p className="mt-4 flex shrink-0 items-center gap-1.5 text-xs font-medium text-good">
             <RotateCcw size={12} /> Chạm để lật lại
@@ -443,16 +473,27 @@ function CardFaces({ word, flipped, manual = false, phase = null, badge = null, 
   );
 }
 
-function Speaking({ tone, children }) {
+/**
+ * Dòng "Đang phát âm / Đang đọc nghĩa" luôn giữ chỗ cố định (chỉ ẩn/hiện bằng opacity),
+ * để khi dòng này biến mất chữ trên thẻ không bị nhảy xuống và cỡ chữ không bị tính lại.
+ */
+function Speaking({ tone, active, children }) {
   return (
-    <p className={cx("mt-3 flex shrink-0 items-center gap-2 text-xs font-semibold", tone)}>
+    <p
+      aria-hidden={!active}
+      className={cx(
+        "mt-3 flex h-5 shrink-0 items-center gap-2 text-xs font-semibold transition-opacity duration-200",
+        tone,
+        active ? "opacity-100" : "opacity-0",
+      )}
+    >
       <span className="flex h-3 items-end gap-0.5">
         {[0, 1, 2].map((i) => (
           <motion.span
             key={i}
             className="w-0.5 rounded-full bg-current"
-            animate={{ height: [4, 12, 4] }}
-            transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.15 }}
+            animate={active ? { height: [4, 12, 4] } : { height: 4 }}
+            transition={active ? { duration: 0.8, repeat: Infinity, delay: i * 0.15 } : { duration: 0.2 }}
           />
         ))}
       </span>
