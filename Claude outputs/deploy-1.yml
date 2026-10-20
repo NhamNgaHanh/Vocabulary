@@ -1,0 +1,76 @@
+# Build & deploy VocaLearn lên GitHub Pages mỗi khi push lên nhánh master.
+# Cần: Settings → Pages → Source = "GitHub Actions"
+#      Settings → Secrets and variables → Actions → thêm các secret VITE_* (xem README).
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch: # cho phép bấm chạy tay trong tab Actions
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      # Nhận giá trị từ Repository secrets (ưu tiên) hoặc Repository variables.
+      # LƯU Ý: secret tạo trong Settings → Environments → github-pages sẽ KHÔNG có ở job này.
+      - name: Kiểm tra cấu hình
+        env:
+          VITE_SHEET_ID: ${{ secrets.VITE_SHEET_ID || vars.VITE_SHEET_ID }}
+          VITE_SHEETS_API_KEY: ${{ secrets.VITE_SHEETS_API_KEY || vars.VITE_SHEETS_API_KEY }}
+          VITE_SCRIPT_URL: ${{ secrets.VITE_SCRIPT_URL || vars.VITE_SCRIPT_URL }}
+        run: |
+          missing=0
+          for name in VITE_SHEET_ID VITE_SHEETS_API_KEY VITE_SCRIPT_URL; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Thiếu $name — thêm ở Settings → Secrets and variables → Actions → Repository secrets"
+              missing=1
+            else
+              echo "✓ $name đã có (giá trị được ẩn)"
+            fi
+          done
+          exit $missing
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_SHEET_ID: ${{ secrets.VITE_SHEET_ID || vars.VITE_SHEET_ID }}
+          VITE_SHEETS_API_KEY: ${{ secrets.VITE_SHEETS_API_KEY || vars.VITE_SHEETS_API_KEY }}
+          VITE_SHEET_NAME: ${{ vars.VITE_SHEET_NAME || 'Sheet1' }}
+          VITE_SCRIPT_URL: ${{ secrets.VITE_SCRIPT_URL || vars.VITE_SCRIPT_URL }}
+          VITE_SCRIPT_TOKEN: ${{ secrets.VITE_SCRIPT_TOKEN || vars.VITE_SCRIPT_TOKEN }}
+          VITE_SRS_SHEET_SYNC: ${{ vars.VITE_SRS_SHEET_SYNC }}
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
